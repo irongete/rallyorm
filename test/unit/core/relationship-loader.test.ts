@@ -604,4 +604,110 @@ describe('RelationshipLoader', () => {
         expect((loader as any).maxCacheEntries).to.equal(3);
         expect((loader as any).inverseQueryChunkSize).to.equal(4);
     });
+
+    it('should return entities unchanged when include list is empty', async () => {
+        const loader = new RelationshipLoader(createMockClient() as any);
+        const entity = new RallyEntity({ _ref: '/defect/1', Name: 'D1' });
+
+        const result = await loader.loadRelationships(entity, []);
+
+        expect(result).to.equal(entity);
+    });
+
+    it('should evict oldest cache entry when maxCacheEntries is reached', () => {
+        const loader = new RelationshipLoader(createMockClient() as any, { maxCacheEntries: 2 });
+        const cache = (loader as any).cache as Map<string, any>;
+
+        (loader as any)._setCacheEntry('/entity/1', { ObjectID: 1 });
+        (loader as any)._setCacheEntry('/entity/2', { ObjectID: 2 });
+        (loader as any)._setCacheEntry('/entity/3', { ObjectID: 3 });
+
+        expect(cache.size).to.equal(2);
+        expect(cache.has('/entity/1')).to.equal(false);
+        expect(cache.has('/entity/2')).to.equal(true);
+        expect(cache.has('/entity/3')).to.equal(true);
+    });
+
+    it('should warn and skip inverse relation when foreignKey is missing from relation definition', async () => {
+        class Story extends RallyEntity {
+            static entityType = 'hierarchicalrequirement';
+            static relations = {
+                Tasks: { type: 'hasMany', entity: 'task', foreignKey: undefined as any }
+            };
+        }
+
+        const warnings: string[] = [];
+        const client = createMockClient({
+            logger: {
+                debug: () => { },
+                info: () => { },
+                warn: (msg: string) => { warnings.push(msg); },
+                error: () => { }
+            },
+            queryAll: async () => []
+        });
+
+        const loader = new RelationshipLoader(client as any);
+        const story = new Story({ _ref: '/hierarchicalrequirement/1', _type: 'hierarchicalrequirement' });
+
+        await loader.loadRelationships(story, ['Tasks'], {
+            hierarchicalrequirement: Story
+        });
+
+        expect(warnings.some(w => w.includes('foreignKey'))).to.equal(true);
+    });
+
+    it('should set relationship to empty array when collection field has no _ref and no _tagsNameArray', async () => {
+        class ProjectModel extends RallyEntity {
+            static entityType = 'project';
+            static relations = {
+                TeamMembers: { type: 'hasMany', entity: 'user', foreignKey: 'TeamMembers', isCollection: true }
+            };
+        }
+
+        const client = createMockClient({
+            queryCollectionAll: async () => []
+        });
+
+        const loader = new RelationshipLoader(client as any);
+        const project = new ProjectModel({
+            _ref: '/project/1',
+            _type: 'project',
+            TeamMembers: { Count: 0 }
+        });
+
+        await loader.loadRelationships(project, ['TeamMembers'], {
+            project: ProjectModel
+        });
+
+        expect(project._data.TeamMembers).to.deep.equal([]);
+    });
+
+    it('should return early from belongsTo loading when no entity has the foreign key set', async () => {
+        class Story extends RallyEntity {
+            static entityType = 'hierarchicalrequirement';
+            static relations = {
+                Project: { type: 'belongsTo', entity: 'project', foreignKey: 'Project' }
+            };
+        }
+
+        let queryAllCalled = false;
+        const client = createMockClient({
+            queryAll: async () => { queryAllCalled = true; return []; }
+        });
+
+        const loader = new RelationshipLoader(client as any);
+        const story = new Story({
+            _ref: '/hierarchicalrequirement/1',
+            _type: 'hierarchicalrequirement',
+            Project: null
+        });
+
+        await loader.loadRelationships(story, ['Project'], {
+            hierarchicalrequirement: Story,
+            project: RallyEntity
+        });
+
+        expect(queryAllCalled).to.equal(false);
+    });
 });

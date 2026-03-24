@@ -647,4 +647,172 @@ describe('RallyClient', function () {
             );
         });
     });
+
+    describe('Pagination', () => {
+        it('should fetch all pages when queryAll TotalResultCount exceeds first page', async () => {
+            const fetchedStarts: number[] = [];
+
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                fetch: async (url) => {
+                    const start = Number(new URL(String(url)).searchParams.get('start') || '1');
+                    fetchedStarts.push(start);
+                    const items = start === 1
+                        ? [{ ObjectID: 1 }, { ObjectID: 2 }]
+                        : [{ ObjectID: 3 }, { ObjectID: 4 }];
+
+                    return {
+                        ok: true, status: 200, statusText: 'OK',
+                        headers: { get: () => null, getSetCookie: () => [] },
+                        text: async () => JSON.stringify({
+                            QueryResult: { Results: items, TotalResultCount: 4 }
+                        })
+                    } as unknown as Response;
+                }
+            });
+
+            const results = await client.queryAll('defect', { pagesize: 2 });
+
+            expect(results).to.have.length(4);
+            expect(fetchedStarts).to.include(1);
+            expect(fetchedStarts).to.include(3);
+        });
+
+        it('should cap queryAll results at maxResults even when more exist', async () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                fetch: async () => ({
+                    ok: true, status: 200, statusText: 'OK',
+                    headers: { get: () => null, getSetCookie: () => [] },
+                    text: async () => JSON.stringify({
+                        QueryResult: {
+                            Results: [{ ObjectID: 1 }, { ObjectID: 2 }, { ObjectID: 3 }],
+                            TotalResultCount: 100
+                        }
+                    })
+                } as unknown as Response)
+            });
+
+            const results = await client.queryAll('defect', { maxResults: 2 });
+
+            expect(results).to.have.length(2);
+        });
+
+        it('should return empty array from queryAll when first page has no QueryResult', async () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                fetch: async () => ({
+                    ok: true, status: 200, statusText: 'OK',
+                    headers: { get: () => null, getSetCookie: () => [] },
+                    text: async () => JSON.stringify({})
+                } as unknown as Response)
+            });
+
+            const results = await client.queryAll('defect');
+
+            expect(results).to.deep.equal([]);
+        });
+    });
+
+    describe('Resilience', () => {
+        it('should retry and succeed after a 5xx server error', async () => {
+            let callCount = 0;
+
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                retries: 1,
+                retryDelayMs: 10,
+                fetch: async () => {
+                    callCount += 1;
+                    if (callCount === 1) {
+                        return {
+                            ok: false, status: 503, statusText: 'Service Unavailable',
+                            headers: { get: () => null, getSetCookie: () => [] },
+                            text: async () => ''
+                        } as unknown as Response;
+                    }
+
+                    return {
+                        ok: true, status: 200, statusText: 'OK',
+                        headers: { get: () => null, getSetCookie: () => [] },
+                        text: async () => JSON.stringify({
+                            QueryResult: { Results: [{ ObjectID: 1 }], TotalResultCount: 1 }
+                        })
+                    } as unknown as Response;
+                }
+            });
+
+            const results = await client.query('defect');
+
+            expect(results).to.have.length(1);
+            expect(callCount).to.equal(2);
+        });
+
+        it('should retry create on concurrency conflict and succeed on second attempt', async () => {
+            let callCount = 0;
+
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                allowCreate: true,
+                retries: 1,
+                retryDelayMs: 10,
+                fetch: async () => {
+                    callCount += 1;
+                    if (callCount === 1) {
+                        return {
+                            ok: true, status: 200, statusText: 'OK',
+                            headers: { get: () => null, getSetCookie: () => [] },
+                            text: async () => JSON.stringify({
+                                CreateResult: {
+                                    Errors: ['Concurrency conflict: object has been modified since being read'],
+                                    Warnings: []
+                                }
+                            })
+                        } as unknown as Response;
+                    }
+
+                    return {
+                        ok: true, status: 200, statusText: 'OK',
+                        headers: { get: () => null, getSetCookie: () => [] },
+                        text: async () => JSON.stringify({
+                            CreateResult: {
+                                Object: { ObjectID: 999, Name: 'Created' },
+                                Errors: [],
+                                Warnings: []
+                            }
+                        })
+                    } as unknown as Response;
+                }
+            });
+
+            const result = await client.create('defect', { Name: 'Test' });
+
+            expect(result.ObjectID).to.equal(999);
+            expect(callCount).to.equal(2);
+        });
+
+        it('should expose getRelationshipLoaderOptions values from config', () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                fetch: createMockFetch({}),
+                relationshipLoaderOptions: { maxDepth: 3, maxCacheEntries: 100 }
+            });
+
+            const opts = client.getRelationshipLoaderOptions();
+
+            expect(opts.maxDepth).to.equal(3);
+            expect(opts.maxCacheEntries).to.equal(100);
+        });
+
+        it('should return empty object from getRelationshipLoaderOptions when no options configured', () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                fetch: createMockFetch({})
+            });
+
+            const opts = client.getRelationshipLoaderOptions();
+
+            expect(opts).to.deep.equal({});
+        });
+    });
 });

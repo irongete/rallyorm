@@ -516,4 +516,98 @@ describe('RallyRepository', function () {
             expect(entity?.toJSON().Project).to.deep.equal({ _ref: '/project/1', _type: 'project', Name: 'Project 1' });
         });
     });
+
+    describe('Additional Coverage', () => {
+        it('should fall back to query count when client has no queryCount method', async () => {
+            let queryCalled = false;
+            const client = createMockClient({
+                queryCount: undefined as any,
+                query: async () => { queryCalled = true; return [{ ObjectID: '1' }]; }
+            });
+            const repo = new RallyRepository('defect', client);
+
+            const result = await repo.count({});
+
+            expect(queryCalled).to.equal(true);
+            expect(result).to.equal(1);
+        });
+
+        it('should return false from exists when no entity matches', async () => {
+            const client = createMockClient({ query: async () => [] });
+            const repo = new RallyRepository('defect', client);
+
+            const result = await repo.exists({ State: 'NonExistentState' });
+
+            expect(result).to.equal(false);
+        });
+
+        it('should extract ObjectID from entity object in remove', async () => {
+            let deletedId: string | undefined;
+            const client = createMockClient({
+                delete: async (_type: string, id: string) => { deletedId = id; return true; }
+            });
+            const repo = new RallyRepository('defect', client);
+
+            const result = await repo.remove({ ObjectID: '99999' });
+
+            expect(deletedId).to.equal('99999');
+            expect(result).to.equal(true);
+        });
+
+        it('should throw when remove receives an object without ObjectID or id', async () => {
+            const repo = new RallyRepository('defect', createMockClient());
+
+            try {
+                await repo.remove({ Name: 'No ID here' } as any);
+                expect.fail('Expected remove to throw');
+            } catch (error: any) {
+                expect(String(error.message)).to.include('ObjectID');
+            }
+        });
+
+        it('should pass raw entity data directly to create without pre-normalizing for new entities', async () => {
+            let capturedPayload: any;
+            const client = createMockClient({
+                create: async (_type: string, data: any) => {
+                    capturedPayload = data;
+                    return { ObjectID: '123', ...data };
+                }
+            });
+            const repo = new RallyRepository('defect', client);
+
+            await repo.save({
+                Name: 'New Defect',
+                Feature: { _ref: 'https://rally1.rallydev.com/slm/webservice/v2.0/portfolioitem/feature/42' }
+            });
+
+            expect(capturedPayload.Name).to.equal('New Defect');
+            expect(capturedPayload.Feature).to.deep.equal({ _ref: '/portfolioitem/feature/42' });
+        });
+
+        it('should normalize fetch string with no dot notation to just a fetch field list', () => {
+            const repo = new RallyRepository('defect', createMockClient()) as any;
+
+            const opts = repo._normalizeOptions({ fetch: 'ObjectID,Name,State' });
+
+            expect(opts.fetch).to.equal('ObjectID,Name,State');
+            expect(opts.include === null || opts.include === undefined || opts.include.length === 0).to.equal(true);
+        });
+
+        it('should return empty arrays from _parseUnifiedFetch when fetchSpec is empty', () => {
+            const repo = new RallyRepository('defect', createMockClient()) as any;
+
+            const result = repo._parseUnifiedFetch('');
+
+            expect(result.fetch).to.deep.equal([]);
+            expect(result.include).to.deep.equal([]);
+        });
+
+        it('should return empty includes from _normalizeOptions when include is not provided', () => {
+            const repo = new RallyRepository('defect', createMockClient()) as any;
+
+            const opts = repo._normalizeOptions({ fetch: 'ObjectID' });
+
+            expect(opts.include === null || opts.include === undefined || opts.include?.length === 0).to.equal(true);
+        });
+    });
 });

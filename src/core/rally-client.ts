@@ -91,6 +91,11 @@ const PACKAGE_VERSION_CANDIDATE_PATHS = (() => {
 
 let cachedPackageVersion: string | null = null;
 
+interface IPQueueInstance {
+    add<T>(fn: () => Promise<T>): Promise<T>;
+    readonly concurrency: number;
+}
+
 /**
  * Rally API Client with repository pattern interface
  * Provides robust HTTP client with retry logic, rate limiting, and error handling
@@ -109,7 +114,7 @@ export class RallyClient {
     readonly allowCreate: boolean;
     readonly allowUpdate: boolean;
     readonly allowDelete: boolean;
-    private queue: any;
+    private queue!: IPQueueInstance;
     logger!: IRallyLogger;
     private readonly defaultHeaders: Record<string, string>;
     fetch!: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -147,7 +152,7 @@ export class RallyClient {
         this.allowDelete = perms.allowDelete;
 
         const PQueueClass = (PQueue as any).default || PQueue;
-        this.queue = new PQueueClass(this._buildQueueOptions(options));
+        this.queue = new PQueueClass(this._buildQueueOptions(options)) as IPQueueInstance;
 
         this.defaultHeaders = this._buildHeaders(options);
     }

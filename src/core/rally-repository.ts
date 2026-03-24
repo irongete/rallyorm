@@ -260,8 +260,7 @@ export class RallyRepository<T extends RallyEntity = any> {
         if (objectId) {
             return this.update(objectId, entity);
         } else {
-            const prepared = await this._prepareSaveData(raw);
-            return this.create(prepared);
+            return this.create(raw);
         }
     }
 

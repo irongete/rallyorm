@@ -141,8 +141,7 @@ export class Release extends WorkspaceDomainObject {
         WorkProducts: {
             type: 'hasMany',
             entity: 'artifact',
-            foreignKey: 'Release',
-            inverseRef: true
+            isCollection: true
         }
     };
 }

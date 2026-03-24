@@ -48,7 +48,12 @@ export class RallyRepository<T extends RallyEntity = any> {
         this.modelClass = modelClass;
         this.modelRegistry = modelRegistry;
         this.dataSource = dataSource;
-        this.relationshipLoader = new RelationshipLoader(rallyClient);
+        this.relationshipLoader = new RelationshipLoader(
+            rallyClient,
+            typeof rallyClient.getRelationshipLoaderOptions === 'function'
+                ? rallyClient.getRelationshipLoaderOptions()
+                : {}
+        );
     }
 
     /**
@@ -790,12 +795,8 @@ export class RallyRepository<T extends RallyEntity = any> {
             let processed = objects;
 
             if (strings.length > 0) {
-                try {
-                    const created = await this._processTagsArray(strings);
-                    processed = [...objects, ...created];
-                } catch {
-                    processed = objects;
-                }
+                const created = await this._processTagsArray(strings);
+                processed = [...objects, ...created];
             }
 
             return processed.length > 0 ? processed : undefined;
@@ -868,6 +869,7 @@ export class RallyRepository<T extends RallyEntity = any> {
         this.client.logger?.debug(`[${this.entityType}] Processing tags: ${validTagNames.join(', ')}`);
 
         const tagReferences: any[] = [];
+        const failedTagNames: string[] = [];
 
         for (const tagName of validTagNames) {
             try {
@@ -877,10 +879,19 @@ export class RallyRepository<T extends RallyEntity = any> {
                 }
                 if (tag && tag._ref) {
                     tagReferences.push({ _ref: tag._ref });
+                } else {
+                    failedTagNames.push(tagName);
                 }
             } catch (error: any) {
                 this.client.logger?.error(`[${this.entityType}] Failed to process tag "${tagName}":`, error.message);
+                failedTagNames.push(tagName);
             }
+        }
+
+        if (failedTagNames.length > 0) {
+            throw new Error(
+                `Failed to resolve or create Rally tags for ${this.entityType}: ${failedTagNames.join(', ')}`
+            );
         }
 
         this.client.logger?.debug(`[${this.entityType}] Processed ${tagReferences.length} tag references`);

@@ -15,6 +15,11 @@ export interface IQueueOptions {
     carryoverConcurrencyCount?: boolean;
 }
 
+export interface IRelationshipLoaderOptions {
+    maxDepth?: number;
+    maxCacheEntries?: number;
+}
+
 export interface IRallyClientConfig {
     apiKey: string;
     workspace?: string;
@@ -30,6 +35,7 @@ export interface IRallyClientConfig {
     allowUpdate?: boolean;
     allowDelete?: boolean;
     readOnly?: boolean | null;
+    relationshipLoaderOptions?: IRelationshipLoaderOptions;
     fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
 
@@ -108,12 +114,14 @@ export class RallyClient {
     fetch!: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
     private _jsessionCookie: string | null;
     private _concurrencyRetries: number;
+    private readonly _clientOptions: IRallyClientConfig;
 
     /**
      * Create a new Rally client instance
      */
     constructor(options: IRallyClientConfig) {
         this._validateOptions(options);
+        this._clientOptions = { ...options };
 
         const cfg = this._buildConfiguration(options);
         this.apiKey = cfg.apiKey;
@@ -194,6 +202,12 @@ export class RallyClient {
             allowCreate: this.allowCreate,
             allowUpdate: this.allowUpdate,
             allowDelete: this.allowDelete
+        };
+    }
+
+    getRelationshipLoaderOptions(): IRelationshipLoaderOptions {
+        return {
+            ...(this._clientOptions.relationshipLoaderOptions || {})
         };
     }
 
@@ -921,7 +935,7 @@ export class RallyClient {
      * Validate constructor options
      */
     private _validateOptions(options: IRallyClientConfig): void {
-        const { apiKey, authMode } = options;
+        const { apiKey, authMode, relationshipLoaderOptions } = options;
 
         if (!apiKey || typeof apiKey !== 'string') {
             throw new Error('RallyClient: apiKey is required and must be a string');
@@ -929,6 +943,14 @@ export class RallyClient {
 
         if (authMode && !['bearer', 'zsessionid'].includes(authMode)) {
             throw new Error('RallyClient: authMode must be either "bearer" or "zsessionid"');
+        }
+
+        if (relationshipLoaderOptions?.maxDepth !== undefined) {
+            this._normalizeIntegerOption(relationshipLoaderOptions.maxDepth, 'relationshipLoaderOptions.maxDepth', 0);
+        }
+
+        if (relationshipLoaderOptions?.maxCacheEntries !== undefined) {
+            this._normalizeIntegerOption(relationshipLoaderOptions.maxCacheEntries, 'relationshipLoaderOptions.maxCacheEntries', 1);
         }
     }
 

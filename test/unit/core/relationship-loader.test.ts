@@ -477,4 +477,82 @@ describe('RelationshipLoader', () => {
         expect((loader as any).cache.has('/feature/3')).to.equal(true);
         expect((loader as any).cache.size).to.equal(2);
     });
+
+    it('should honor a custom maximum relationship depth', async () => {
+        class Story extends RallyEntity {
+            static entityType = 'hierarchicalrequirement';
+            static relations = {
+                Feature: { type: 'belongsTo', entity: 'portfolioitem/feature', foreignKey: 'Feature' }
+            };
+        }
+
+        class FeatureModel extends RallyEntity {
+            static entityType = 'portfolioitem/feature';
+            static relations = {
+                Owner: { type: 'belongsTo', entity: 'user', foreignKey: 'Owner' }
+            };
+        }
+
+        class UserModel extends RallyEntity {
+            static entityType = 'user';
+            static relations = {};
+        }
+
+        const warnings: string[] = [];
+        const client = createMockClient({
+            logger: {
+                debug: () => { },
+                info: () => { },
+                warn: (message: string) => { warnings.push(message); },
+                error: () => { }
+            },
+            queryAll: async (entityType: string) => {
+                if (entityType === 'portfolioitem/feature') {
+                    return [{
+                        _ref: '/portfolioitem/feature/42',
+                        _type: 'portfolioitem/feature',
+                        Name: 'Feature 42',
+                        Owner: { _ref: '/user/7' }
+                    }];
+                }
+
+                if (entityType === 'user') {
+                    return [{
+                        _ref: '/user/7',
+                        _type: 'user',
+                        DisplayName: 'Ada Lovelace'
+                    }];
+                }
+
+                return [];
+            }
+        });
+
+        const loader = new RelationshipLoader(client as any, { maxDepth: 0 });
+        const story = new Story({
+            _ref: '/hierarchicalrequirement/1',
+            _type: 'hierarchicalrequirement',
+            Feature: { _ref: '/portfolioitem/feature/42' }
+        });
+
+        await loader.loadRelationships(story, ['Feature.Owner'], {
+            hierarchicalrequirement: Story,
+            'portfolioitem/feature': FeatureModel,
+            user: UserModel
+        });
+
+        expect(story._data.Feature).to.include({ _ref: '/portfolioitem/feature/42', Name: 'Feature 42' });
+        expect((story._data.Feature as any).Owner).to.deep.equal({ _ref: '/user/7' });
+        expect(warnings).to.deep.equal(['RelationshipLoader: Maximum depth (0) reached']);
+    });
+
+    it('should apply configured loader cache limits', () => {
+        const loader = new RelationshipLoader(createMockClient() as any, {
+            maxDepth: 2,
+            maxCacheEntries: 3
+        });
+
+        expect((loader as any).maxDepth).to.equal(2);
+        expect((loader as any).maxCacheEntries).to.equal(3);
+    });
 });

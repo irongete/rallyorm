@@ -167,7 +167,11 @@ const ds = new RallyDataSource({
   workspace: process.env.RALLY_WORKSPACE,
   allowCreate: true,
   allowUpdate: true,
-  allowDelete: true
+  allowDelete: true,
+  relationshipLoaderOptions: {
+    maxDepth: 5,
+    maxCacheEntries: 5000
+  }
 });
 ```
 
@@ -184,6 +188,27 @@ await ds.defects.save(defect);
 ```
 
 For production usage, keep writes disabled unless the process really needs them.
+
+String-based tag writes are strict. If RallyORM cannot resolve or create every requested tag, the write fails instead of silently dropping tags from the payload.
+
+### Relationship Loading Limits
+
+Relationship hydration is bounded to protect callers from runaway graphs.
+
+- `relationshipLoaderOptions.maxDepth` controls how many nested include levels RallyORM will traverse. Default is `5`.
+- `relationshipLoaderOptions.maxCacheEntries` controls the in-memory relationship reference cache size. Default is `5000`.
+
+```typescript
+const ds = new RallyDataSource({
+  apiKey: process.env.RALLY_API_KEY as string,
+  relationshipLoaderOptions: {
+    maxDepth: 3,
+    maxCacheEntries: 1000
+  }
+});
+```
+
+When the configured relationship depth is reached, RallyORM stops descending further and logs a warning through the configured client logger.
 
 ## Custom Fields
 

@@ -341,6 +341,57 @@ describe('RallyRepository', function () {
             });
         });
 
+        it('should fail save when string tags cannot be resolved or created', async () => {
+            const client = createMockClient({
+                query: async () => [],
+                create: async (type: string, data: any) => {
+                    if (type === 'tag') {
+                        throw new Error(`Could not create tag ${data.Name}`);
+                    }
+
+                    return { ObjectID: '123', ...data };
+                }
+            });
+            const repo = new RallyRepository('defect', client);
+
+            try {
+                await repo.save({
+                    Name: 'Defect with invalid tags',
+                    Tags: ['BrokenTag']
+                });
+                expect.fail('Expected save to reject when tag creation fails');
+            } catch (error: any) {
+                expect(String(error?.message ?? error)).to.include('Failed to resolve or create Rally tags for defect: BrokenTag');
+            }
+        });
+
+        it('should keep ref-based tags while still failing unresolved string tags', async () => {
+            let entityCreateCalls = 0;
+            const client = createMockClient({
+                query: async () => [],
+                create: async (type: string, data: any) => {
+                    if (type === 'tag') {
+                        throw new Error(`Could not create tag ${data.Name}`);
+                    }
+
+                    entityCreateCalls += 1;
+                    return { ObjectID: '123', ...data };
+                }
+            });
+            const repo = new RallyRepository('defect', client);
+
+            try {
+                await repo.save({
+                    Name: 'Defect with mixed tags',
+                    Tags: [{ _ref: '/tag/42' }, 'BrokenTag']
+                });
+                expect.fail('Expected save to reject when one tag cannot be created');
+            } catch (error: any) {
+                expect(String(error?.message ?? error)).to.include('BrokenTag');
+                expect(entityCreateCalls).to.equal(0);
+            }
+        });
+
         it('should pass normalized fetch to get and eager-load includes in findOne by id', async () => {
             const includeCalls: string[][] = [];
             const client = createMockClient({

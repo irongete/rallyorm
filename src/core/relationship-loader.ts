@@ -1,5 +1,5 @@
 import { toRelativeRef, toAbsoluteRef } from './ref-utils.js';
-import type { RallyClient } from './rally-client.js';
+import type { RallyClient, IRelationshipLoaderOptions } from './rally-client.js';
 import type { IRallyEntityData, IRelationDefinition } from '../models/base-entity.js';
 import type { RallyModelClass } from '../models/registry.js';
 
@@ -33,11 +33,13 @@ export class RelationshipLoader {
     client: RallyClient;
     private cache: Map<string, IRelationshipEntity>;
     private maxCacheEntries: number;
+    private maxDepth: number;
 
-    constructor(rallyClient: RallyClient) {
+    constructor(rallyClient: RallyClient, options: IRelationshipLoaderOptions = {}) {
         this.client = rallyClient;
         this.cache = new Map();
-        this.maxCacheEntries = 5000;
+        this.maxCacheEntries = options.maxCacheEntries ?? 5000;
+        this.maxDepth = options.maxDepth ?? 5;
     }
 
     /**
@@ -112,9 +114,8 @@ export class RelationshipLoader {
      * Load relationships level by level
      */
     private async _loadRelationshipLevels(entities: IRelationshipEntity[], includePaths: Record<string, IIncludeConfig>, modelRegistry: IModelRegistry, level: number = 0): Promise<void> {
-        const maximumDepth = 5;
-        if (level > maximumDepth) {
-            this._warn(`RelationshipLoader: Maximum depth (${maximumDepth}) reached`);
+        if (level > this.maxDepth) {
+            this._warn(`RelationshipLoader: Maximum depth (${this.maxDepth}) reached`);
             return;
         }
 

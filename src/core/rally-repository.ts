@@ -872,29 +872,22 @@ export class RallyRepository<T extends RallyEntity = any> {
         this.client.logger?.debug(`[${this.entityType}] Processing tags: ${validTagNames.join(', ')}`);
 
         const resolvedTags = new Map<string, any>();
-        const missingTagNames: string[] = [];
         const failedTagNames: string[] = [];
 
-        for (const tagName of validTagNames) {
-            try {
-                const tag = await this._findTagByName(tagName);
-                if (tag) {
-                    resolvedTags.set(tagName, tag);
-                } else {
-                    missingTagNames.push(tagName);
+        // Batch-find all requested tags in a single query to minimise round-trips
+        try {
+            const existingTags = await this._findTagsByNames(validTagNames);
+            for (const tag of existingTags) {
+                if (tag && tag.Name) {
+                    resolvedTags.set(tag.Name, tag);
                 }
-            } catch (error: any) {
-                this.client.logger?.error(`[${this.entityType}] Failed to resolve tag "${tagName}":`, error.message);
-                failedTagNames.push(tagName);
             }
+        } catch (error: any) {
+            this.client.logger?.error(`[${this.entityType}] Failed to batch-find tags:`, error.message);
+            throw error;
         }
 
-        if (failedTagNames.length > 0) {
-            throw new RallyOperationError(
-                `Failed to resolve or create Rally tags for ${this.entityType}: ${failedTagNames.join(', ')}`,
-                failedTagNames.map(n => `Could not resolve tag: ${n}`)
-            );
-        }
+        const missingTagNames = validTagNames.filter(name => !resolvedTags.has(name));
 
         for (const tagName of missingTagNames) {
             try {
@@ -927,18 +920,19 @@ export class RallyRepository<T extends RallyEntity = any> {
         return tagReferences;
     }
 
-    private async _findTagByName(tagName: string): Promise<any> {
-        try {
-            const results = await this.client.query('tag', {
-                query: `(Name = "${this._escapeValue(tagName)}")`,
-                fetch: 'ObjectID,Name',
-                pagesize: 1
-            });
-            return results.length > 0 ? results[0] : null;
-        } catch (error: any) {
-            this.client.logger?.error(`[${this.entityType}] Failed to find tag "${tagName}":`, error.message);
-            throw error;
+    private async _findTagsByNames(tagNames: string[]): Promise<any[]> {
+        if (tagNames.length === 0) {
+            return [];
         }
+
+        const queryParts = tagNames.map(name => `(Name = "${this._escapeValue(name)}")`);
+        const query = queryParts.length === 1 ? queryParts[0] : `(${queryParts.join(' OR ')})`;
+
+        return this.client.query('tag', {
+            query,
+            fetch: 'ObjectID,Name',
+            pagesize: Math.min(tagNames.length + 10, 2000)
+        });
     }
 
     private async _createTag(tagName: string): Promise<any> {

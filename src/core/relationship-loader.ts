@@ -92,9 +92,16 @@ export class RelationshipLoader {
      */
     private _parseIncludePaths(includes: string[]): Record<string, IIncludeConfig> {
         const paths: Record<string, IIncludeConfig> = {};
+        const maxPathDepth = 10;
 
         for (const include of includes) {
             const parts = include.split('.');
+
+            if (parts.length > maxPathDepth) {
+                this._warn(`RelationshipLoader: Include path exceeds maximum depth (${maxPathDepth}), skipping: ${include}`);
+                continue;
+            }
+
             let current = paths;
 
             for (let i = 0; i < parts.length; i++) {
@@ -124,7 +131,7 @@ export class RelationshipLoader {
         const entitiesByType = this._groupEntitiesByType(entities);
         const relationEntries = Object.entries(includePaths);
 
-        await Promise.all(relationEntries.map(([relationName, relationConfig]) =>
+        const loadResults = await Promise.allSettled(relationEntries.map(([relationName, relationConfig]) =>
             this._loadRelationshipForAllTypes(
                 entitiesByType,
                 relationName,
@@ -133,7 +140,13 @@ export class RelationshipLoader {
             )
         ));
 
-        await Promise.all(relationEntries.map(async ([relationName, relationConfig]) => {
+        for (const result of loadResults) {
+            if (result.status === 'rejected') {
+                this._warn(`RelationshipLoader: Failed to load relationship: ${result.reason?.message ?? String(result.reason)}`);
+            }
+        }
+
+        const nestedResults = await Promise.allSettled(relationEntries.map(async ([relationName, relationConfig]) => {
             if (Object.keys(relationConfig.children).length > 0) {
                 const relatedEntities = this._extractRelatedEntities(entities, relationName);
                 if (relatedEntities.length > 0) {
@@ -146,6 +159,12 @@ export class RelationshipLoader {
                 }
             }
         }));
+
+        for (const result of nestedResults) {
+            if (result.status === 'rejected') {
+                this._warn(`RelationshipLoader: Failed to load nested relationship: ${result.reason?.message ?? String(result.reason)}`);
+            }
+        }
     }
 
     /**
@@ -176,7 +195,7 @@ export class RelationshipLoader {
      * Load a specific relationship for all entity types
      */
     private async _loadRelationshipForAllTypes(entitiesByType: Record<string, IRelationshipEntity[]>, relationName: string, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry): Promise<void> {
-        await Promise.all(Object.entries(entitiesByType).map(async ([entityType, entities]) => {
+        const results = await Promise.allSettled(Object.entries(entitiesByType).map(async ([entityType, entities]) => {
             const ModelClass = modelRegistry[entityType];
             if (!ModelClass || !ModelClass.relations || !ModelClass.relations[relationName]) {
                 return;
@@ -185,6 +204,12 @@ export class RelationshipLoader {
             const relation = ModelClass.relations[relationName];
             await this._loadRelationshipBatch(entities, relationName, relation, relationConfig, modelRegistry);
         }));
+
+        for (const result of results) {
+            if (result.status === 'rejected') {
+                this._warn(`RelationshipLoader: Failed to load "${relationName}" for entity type: ${result.reason?.message ?? String(result.reason)}`);
+            }
+        }
     }
 
     /**
@@ -254,7 +279,7 @@ export class RelationshipLoader {
      * Load Rally collection relationships
      */
     private async _loadCollectionRelation(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry): Promise<void> {
-        await Promise.all(entities.map(async entity => {
+        const results = await Promise.allSettled(entities.map(async entity => {
             const collectionField = this._asCollectionField(this._getCollectionField(entity, relationName, relation.foreignKey));
             if (!collectionField) {
                 this._setRelationshipValue(entity, relationName, []);
@@ -281,6 +306,12 @@ export class RelationshipLoader {
 
             this._setRelationshipValue(entity, relationName, relatedEntities);
         }));
+
+        for (const result of results) {
+            if (result.status === 'rejected') {
+                this._warn(`RelationshipLoader: Failed to load collection "${relationName}": ${result.reason?.message ?? String(result.reason)}`);
+            }
+        }
     }
 
     private _getCollectionField(entity: IRelationshipEntity, relationName: string, foreignKey?: string): unknown {
@@ -356,13 +387,22 @@ export class RelationshipLoader {
         const refChunks = this._chunkArray(entityRefs, this.inverseQueryChunkSize);
         const relatedEntityType = relation.entity;
         const foreignKey = relation.foreignKey;
-        const relatedEntities = (await Promise.all(refChunks.map(refChunk =>
+        const chunkResults = await Promise.allSettled(refChunks.map(refChunk =>
             this.client.queryAll(relatedEntityType, {
                 query: this._buildInverseQuery(foreignKey, refChunk),
                 fetch: Array.from(prefetchFields).join(','),
                 pagesize: 2000
             })
-        ))).flat();
+        ));
+
+        const relatedEntities: any[] = [];
+        for (const result of chunkResults) {
+            if (result.status === 'fulfilled') {
+                relatedEntities.push(...result.value);
+            } else {
+                this._warn(`RelationshipLoader: Failed to load chunk for "${relationName}": ${result.reason?.message ?? String(result.reason)}`);
+            }
+        }
 
         const relatedByForeignKey = new Map<string, any[]>();
         for (const related of relatedEntities) {

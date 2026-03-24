@@ -185,7 +185,14 @@ export class RallyDataSource {
         }
         else if (typeof entityTypeOrClass === 'string') {
             entityType = normalizeEntityType(entityTypeOrClass) || entityTypeOrClass;
-            ModelClass = (this.modelRegistry[entityType] as typeof RallyEntity | undefined) || RallyEntity;
+            const registeredModel = this.modelRegistry[entityType] as typeof RallyEntity | undefined;
+            if (!registeredModel) {
+                this.client.logger?.warn(
+                    `RallyDataSource: No model registered for "${entityType}". ` +
+                    'Using base RallyEntity — field definitions, relationship metadata, and validation rules will not be available.'
+                );
+            }
+            ModelClass = registeredModel || RallyEntity;
         }
         else {
             throw new RallyValidationError('Repository requires a model class with entityType or entity type string');

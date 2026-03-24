@@ -2,7 +2,6 @@ import PQueue from 'p-queue';
 import pRetry, { AbortError } from 'p-retry';
 import { readFileSync } from 'fs';
 import {
-    RallyError,
     RallyValidationError,
     RallyPermissionError,
     RallyOperationError,
@@ -240,6 +239,22 @@ export class RallyClient {
     }
 
     /**
+     * Replace the active logger at runtime.
+     */
+    setLogger(logger: IRallyLogger): void {
+        this.logger = logger;
+    }
+
+    /**
+     * Change the log level at runtime, rebuilding the built-in console logger.
+     * Has no effect when a custom logger was provided at construction time via `options.logger`.
+     */
+    setLogLevel(level: 'silent' | 'error' | 'warn' | 'info' | 'debug'): void {
+        this.logLevel = level;
+        this.logger = this._buildLogger(level);
+    }
+
+    /**
      * Build full URL for Rally API endpoint
      */
     private _url(type: string, suffix: string = ''): string {
@@ -315,6 +330,7 @@ export class RallyClient {
      */
     private async _fetchJson(url: string, { method = 'GET', headers = {}, params, body, meta = {} }: { method?: string; headers?: Record<string, string>; params?: any; body?: any; meta?: any } = {}): Promise<any> {
         const requestUrl = new URL(url);
+        const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
         const queryParams = this._params(params || {});
         Object.entries(queryParams).forEach(([key, value]) => {
@@ -399,6 +415,11 @@ export class RallyClient {
                         throw new RallyNetworkError(`Retryable: ${errorMessage}`, response.status);
                     }
 
+                    if (response.status === 409) {
+                        // HTTP 409 Conflict may indicate a transient concurrency conflict; treat as retryable
+                        throw new RallyNetworkError(`Retryable: ${errorMessage}`, response.status);
+                    }
+
                     if (response.status >= 500) {
                         throw new RallyNetworkError(`Retryable: ${errorMessage}`, response.status);
                     }
@@ -406,7 +427,7 @@ export class RallyClient {
                     throw new AbortError(new RallyNetworkError(`${errorMessage}: ${responseText.slice(0, 300)}`, response.status));
                 }
 
-                this.logger.debug(`${method} ${this._formatUrlForLog(requestUrl)} [status=${response.status}]`);
+                this.logger.debug(`[req:${requestId}] ${method} ${this._formatUrlForLog(requestUrl)} [status=${response.status}]`);
 
                 if (!responseText) {
                     return {};

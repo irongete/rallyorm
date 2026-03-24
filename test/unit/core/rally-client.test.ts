@@ -814,5 +814,74 @@ describe('RallyClient', function () {
 
             expect(opts).to.deep.equal({});
         });
+
+        it('should replace the logger via setLogger', () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                fetch: createMockFetch({})
+            });
+
+            const messages: string[] = [];
+            const customLogger = {
+                debug: () => {},
+                info: () => {},
+                warn: (msg: string) => { messages.push(`warn:${msg}`); },
+                error: (msg: string) => { messages.push(`error:${msg}`); }
+            };
+
+            client.setLogger(customLogger);
+            client.logger.warn('hello from warn');
+            client.logger.error('hello from error');
+
+            expect(messages).to.include('warn:hello from warn');
+            expect(messages).to.include('error:hello from error');
+        });
+
+        it('should rebuild the built-in console logger via setLogLevel', () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                logLevel: 'silent',
+                fetch: createMockFetch({})
+            });
+
+            // At 'silent' level the logger should be a no-op
+            const originalLogger = client.logger;
+            client.setLogLevel('warn');
+            // The logger instance is replaced, not the same reference
+            expect(client.logger).to.not.equal(originalLogger);
+        });
+
+        it('should retry and succeed after a 409 conflict response', async () => {
+            let callCount = 0;
+
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                retries: 1,
+                retryDelayMs: 10,
+                fetch: async () => {
+                    callCount += 1;
+                    if (callCount === 1) {
+                        return {
+                            ok: false, status: 409, statusText: 'Conflict',
+                            headers: { get: () => null, getSetCookie: () => [] },
+                            text: async () => ''
+                        } as unknown as Response;
+                    }
+
+                    return {
+                        ok: true, status: 200, statusText: 'OK',
+                        headers: { get: () => null, getSetCookie: () => [] },
+                        text: async () => JSON.stringify({
+                            QueryResult: { Results: [{ ObjectID: 1 }], TotalResultCount: 1 }
+                        })
+                    } as unknown as Response;
+                }
+            });
+
+            const results = await client.query('defect');
+
+            expect(results).to.have.length(1);
+            expect(callCount).to.equal(2);
+        });
     });
 });

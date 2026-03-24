@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import { LazyLink } from '../../../src/core/lazy-link.js';
 import { RallyEntity } from '../../../src/models/base-entity.js';
+import { RallyValidationError } from '../../../src/core/errors.js';
 
 describe('Lazy Loading', () => {
 
@@ -15,6 +16,28 @@ describe('Lazy Loading', () => {
             const link = new LazyLink({}, { getRepository: () => ({ findOne: async () => null }) } as any);
             const keys = Object.keys(link);
             expect(keys).to.not.include('_dataSource');
+        });
+
+        it('should throw RallyValidationError when load() is called with no _ref', async () => {
+            const link = new LazyLink({}, { getRepository: () => ({ findOne: async () => null }) } as any);
+            try {
+                await link.load();
+                expect.fail('Expected load() to throw');
+            } catch (error: any) {
+                expect(error).to.be.instanceOf(RallyValidationError);
+                expect(error.message).to.include('_ref is missing');
+            }
+        });
+
+        it('should throw RallyValidationError when load() is called with no dataSource', async () => {
+            const link = new LazyLink({ _ref: '/story/1' }, null);
+            try {
+                await link.load();
+                expect.fail('Expected load() to throw');
+            } catch (error: any) {
+                expect(error).to.be.instanceOf(RallyValidationError);
+                expect(error.message).to.include('no dataSource context');
+            }
         });
 
         it('should load entity using dataSource', async () => {

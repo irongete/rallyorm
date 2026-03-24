@@ -1,6 +1,7 @@
 import { getEntityTypeFromRef } from './ref-utils.js';
 import type { IRallyLogger } from './rally-client.js';
 import type { RallyEntity } from '../models/base-entity.js';
+import { RallyValidationError } from './errors.js';
 
 interface ILazyLinkRepository {
     findOne(ref: string): Promise<RallyEntity | null>;
@@ -41,7 +42,15 @@ export class LazyLink {
      * Load the referenced entity
      */
     async load(): Promise<RallyEntity | null> {
-        if (!this._ref || !this._dataSource) return null;
+        if (!this._ref) {
+            throw new RallyValidationError('[LazyLink] Cannot load: _ref is missing');
+        }
+        if (!this._dataSource) {
+            throw new RallyValidationError(
+                `[LazyLink] Cannot load ${this._ref}: no dataSource context. ` +
+                'Ensure the entity was fetched through a repository or constructed with a dataSource.'
+            );
+        }
 
         const type = this._resolveEntityType();
         if (!type) {

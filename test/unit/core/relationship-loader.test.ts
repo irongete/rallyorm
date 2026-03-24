@@ -710,4 +710,31 @@ describe('RelationshipLoader', () => {
 
         expect(queryAllCalled).to.equal(false);
     });
+
+    it('should skip include paths that exceed the maximum depth and warn', async () => {
+        const warnings: string[] = [];
+        const client = createMockClient({
+            queryAll: async () => []
+        });
+        (client as any).logger = {
+            debug: () => {},
+            info: () => {},
+            warn: (msg: string) => { warnings.push(msg); },
+            error: () => {}
+        };
+
+        class Story extends RallyEntity {
+            static entityType = 'hierarchicalrequirement';
+            static relations = {};
+        }
+
+        const loader = new RelationshipLoader(client as any);
+        const story = new Story({ _ref: '/hierarchicalrequirement/1', _type: 'hierarchicalrequirement' });
+
+        // 11-level deep path exceeds the guarded maximum of 10
+        const deepPath = 'A.B.C.D.E.F.G.H.I.J.K';
+        await loader.loadRelationships(story, [deepPath], { hierarchicalrequirement: Story });
+
+        expect(warnings.some(w => w.includes('exceeds maximum depth') && w.includes(deepPath))).to.equal(true);
+    });
 });

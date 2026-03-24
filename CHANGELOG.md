@@ -49,4 +49,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Eliminated double serialization of entity data when `save()` is called for new (un-tracked) entities: the internal `_prepareSaveData` was previously invoked twice before the HTTP create request.
 
-[1.0.0]: https://github.com/your-org/rallyorm/releases/tag/v1.0.0
+[1.1.0]: https://github.com/irongete/rallyorm/releases/tag/v1.1.0
+[1.0.0]: https://github.com/irongete/rallyorm/releases/tag/v1.0.0

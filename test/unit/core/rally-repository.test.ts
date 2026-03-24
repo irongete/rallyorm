@@ -518,18 +518,15 @@ describe('RallyRepository', function () {
     });
 
     describe('Additional Coverage', () => {
-        it('should fall back to query count when client has no queryCount method', async () => {
-            let queryCalled = false;
+        it('should delegate count to client.queryCount', async () => {
             const client = createMockClient({
-                queryCount: undefined as any,
-                query: async () => { queryCalled = true; return [{ ObjectID: '1' }]; }
+                queryCount: async () => 42
             });
             const repo = new RallyRepository('defect', client);
 
             const result = await repo.count({});
 
-            expect(queryCalled).to.equal(true);
-            expect(result).to.equal(1);
+            expect(result).to.equal(42);
         });
 
         it('should return false from exists when no entity matches', async () => {

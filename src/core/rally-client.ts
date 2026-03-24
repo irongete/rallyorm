@@ -509,50 +509,24 @@ export class RallyClient {
         }
 
         const totalCount = queryResult.TotalResultCount ?? 0;
-        const results = [...(queryResult.Results || [])];
+        const firstPageResults = queryResult.Results || [];
 
-        this.logger.debug(`Found ${totalCount} total results, fetched ${results.length} in first page`);
+        this.logger.debug(`Found ${totalCount} total results, fetched ${firstPageResults.length} in first page`);
 
-        const remainingFromStart = Math.max(0, totalCount - (startIndex - 1));
-        const effectiveMaxResults = normalizedMaxResults !== undefined
-            ? Math.min(normalizedMaxResults, remainingFromStart)
-            : remainingFromStart;
-        if (results.length >= effectiveMaxResults) {
-            return results.slice(0, effectiveMaxResults);
-        }
-
-        const remainingPages = [];
-        for (let nextStart = startIndex + pageSize; (nextStart - (startIndex - 1)) <= effectiveMaxResults; nextStart += pageSize) {
-            remainingPages.push(nextStart);
-        }
-
-        const batchSize = Math.max(1, (this.queue.concurrency || 10) * 2);
-
-        for (let i = 0; i < remainingPages.length; i += batchSize) {
-            if (operationDeadline && Date.now() > operationDeadline) {
-                this.logger.warn(`Operation timeout reached, returning ${results.length} results`);
-                break;
-            }
-
-            const batch = remainingPages.slice(i, i + batchSize);
-            const pagePromises = batch.map(nextStart =>
-                this._fetchJson(this._url(type), {
-                    method: 'GET',
-                    params: { query, fetch, start: nextStart, pagesize: pageSize, order },
-                    meta: { op: 'queryAll:page', type, start: nextStart }
-                }).then(data => data?.QueryResult?.Results || [])
-            );
-
-            const pages = await Promise.all(pagePromises);
-            for (const page of pages) {
-                results.push(...page);
-                if (results.length >= effectiveMaxResults) {
-                    return results.slice(0, effectiveMaxResults);
-                }
-            }
-        }
-
-        return results.slice(0, effectiveMaxResults);
+        return this._paginateResults(
+            firstPageResults,
+            totalCount,
+            startIndex,
+            pageSize,
+            normalizedMaxResults,
+            operationDeadline,
+            (nextStart) => this._fetchJson(this._url(type), {
+                method: 'GET',
+                params: { query, fetch, start: nextStart, pagesize: pageSize, order },
+                meta: { op: 'queryAll:page', type, start: nextStart }
+            }).then(data => data?.QueryResult?.Results || []),
+            'Operation'
+        );
     }
 
     /**
@@ -627,47 +601,73 @@ export class RallyClient {
         }
 
         const totalCount = queryResult.TotalResultCount ?? 0;
-        const results = [...(queryResult.Results || [])];
+
+        return this._paginateResults(
+            queryResult.Results || [],
+            totalCount,
+            startIndex,
+            pageSize,
+            normalizedMaxResults,
+            operationDeadline,
+            (nextStart) => this._queryCollectionPage(collectionRef, {
+                fetch,
+                start: nextStart,
+                pagesize: pageSize
+            }).then(data => data?.QueryResult?.Results ?? data?.Results ?? []),
+            'Collection query'
+        );
+    }
+
+    /**
+     * Shared pagination driver used by queryAll and queryCollectionAll.
+     * Fetches remaining pages in parallel batches and returns up to the effective max items.
+     */
+    private async _paginateResults(
+        firstPageResults: any[],
+        totalCount: number,
+        startIndex: number,
+        pageSize: number,
+        effectiveMaxResults: number | undefined,
+        operationDeadline: number | null,
+        fetchPage: (nextStart: number) => Promise<any[]>,
+        context: string
+    ): Promise<any[]> {
         const remainingFromStart = Math.max(0, totalCount - (startIndex - 1));
-        const effectiveMaxResults = normalizedMaxResults !== undefined
-            ? Math.min(normalizedMaxResults, remainingFromStart)
+        const effective = effectiveMaxResults !== undefined
+            ? Math.min(effectiveMaxResults, remainingFromStart)
             : remainingFromStart;
 
-        if (results.length >= effectiveMaxResults) {
-            return results.slice(0, effectiveMaxResults);
+        const results = [...firstPageResults];
+
+        if (results.length >= effective) {
+            return results.slice(0, effective);
         }
 
-        const remainingPages = [];
-        for (let nextStart = startIndex + pageSize; (nextStart - (startIndex - 1)) <= effectiveMaxResults; nextStart += pageSize) {
+        const remainingPages: number[] = [];
+        for (let nextStart = startIndex + pageSize; (nextStart - (startIndex - 1)) <= effective; nextStart += pageSize) {
             remainingPages.push(nextStart);
         }
 
         const batchSize = Math.max(1, (this.queue.concurrency || 10) * 2);
 
-        for (let index = 0; index < remainingPages.length; index += batchSize) {
+        for (let i = 0; i < remainingPages.length; i += batchSize) {
             if (operationDeadline && Date.now() > operationDeadline) {
-                this.logger.warn(`Collection query timeout reached, returning ${results.length} results`);
+                this.logger.warn(`${context} timeout reached, returning ${results.length} results`);
                 break;
             }
 
-            const batch = remainingPages.slice(index, index + batchSize);
-            const pages = await Promise.all(batch.map(nextStart =>
-                this._queryCollectionPage(collectionRef, {
-                    fetch,
-                    start: nextStart,
-                    pagesize: pageSize
-                }).then(data => data?.QueryResult?.Results ?? data?.Results ?? [])
-            ));
+            const batch = remainingPages.slice(i, i + batchSize);
+            const pages = await Promise.all(batch.map(fetchPage));
 
             for (const page of pages) {
                 results.push(...page);
-                if (results.length >= effectiveMaxResults) {
-                    return results.slice(0, effectiveMaxResults);
+                if (results.length >= effective) {
+                    return results.slice(0, effective);
                 }
             }
         }
 
-        return results.slice(0, effectiveMaxResults);
+        return results.slice(0, effective);
     }
 
     private async _queryCollectionPage(collectionRef: string, { fetch, start, pagesize }: Required<Pick<ICollectionQueryOptions, 'start' | 'pagesize'>> & Pick<ICollectionQueryOptions, 'fetch'>): Promise<any> {

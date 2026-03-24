@@ -312,16 +312,7 @@ export class RallyRepository<T extends RallyEntity = any> {
      */
     async count(where: Record<string, unknown> = {}): Promise<number> {
         const query = this._buildQuery(where);
-        if (typeof this.client.queryCount === 'function') {
-            return this.client.queryCount(this.entityType, { query });
-        }
-        const results = await this.client.query(this.entityType, {
-            query,
-            pagesize: 1,
-            start: 1,
-            fetch: 'ObjectID'
-        });
-        return results.length;
+        return this.client.queryCount(this.entityType, { query });
     }
 
     /**

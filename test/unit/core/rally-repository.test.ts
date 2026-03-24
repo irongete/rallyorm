@@ -247,8 +247,25 @@ describe('RallyRepository', function () {
                 delete: async (_type: string, id: string) => { calledId = id; return true; }
             });
             const repo = new RallyRepository('defect', client);
-            await repo.delete('12345');
+            const deleted = await repo.delete('12345');
             expect(calledId).to.equal('12345');
+            expect(deleted).to.equal(true);
+        });
+
+        it('should propagate delete failures from the client', async () => {
+            const client = createMockClient({
+                delete: async () => {
+                    throw new Error('Delete denied');
+                }
+            });
+            const repo = new RallyRepository('defect', client);
+
+            try {
+                await repo.delete('12345');
+                expect.fail('Expected delete to reject');
+            } catch (error: any) {
+                expect(String(error?.message ?? error)).to.include('Delete denied');
+            }
         });
 
         it('should normalize slash-delimited refs during save payload preparation', async () => {
@@ -390,6 +407,45 @@ describe('RallyRepository', function () {
                 expect(String(error?.message ?? error)).to.include('BrokenTag');
                 expect(entityCreateCalls).to.equal(0);
             }
+        });
+
+        it('should resolve existing tags, create missing tags, and preserve deduped order', async () => {
+            let entityPayload: any;
+            const tagCreates: string[] = [];
+            const client = createMockClient({
+                query: async (_type: string, options: { query?: string }) => {
+                    if (options.query?.includes('ExistingTag')) {
+                        return [{ _ref: '/tag/1', Name: 'ExistingTag' }];
+                    }
+
+                    if (options.query?.includes('NewTag')) {
+                        return [];
+                    }
+
+                    return [];
+                },
+                create: async (type: string, data: any) => {
+                    if (type === 'tag') {
+                        tagCreates.push(data.Name);
+                        return { _ref: '/tag/2', Name: data.Name };
+                    }
+
+                    entityPayload = data;
+                    return { ObjectID: '123', ...data };
+                }
+            });
+            const repo = new RallyRepository('defect', client);
+
+            await repo.save({
+                Name: 'Defect with tags',
+                Tags: ['ExistingTag', 'NewTag', 'ExistingTag']
+            });
+
+            expect(tagCreates).to.deep.equal(['NewTag']);
+            expect(entityPayload.Tags).to.deep.equal([
+                { _ref: '/tag/1' },
+                { _ref: '/tag/2' }
+            ]);
         });
 
         it('should pass normalized fetch to get and eager-load includes in findOne by id', async () => {

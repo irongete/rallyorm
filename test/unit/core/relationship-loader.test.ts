@@ -232,6 +232,53 @@ describe('RelationshipLoader', () => {
         expect(story._data.Tasks).to.deep.equal([]);
     });
 
+    it('should chunk large inverse relation queries after deduplicating refs', async () => {
+        class Story extends RallyEntity {
+            static entityType = 'hierarchicalrequirement';
+            static relations = {
+                Tasks: { type: 'hasMany', entity: 'task', foreignKey: 'WorkProduct', inverseRef: true }
+            };
+        }
+
+        const queries: string[] = [];
+        const client = createMockClient({
+            queryAll: async (_entityType: string, options: { query?: string }) => {
+                queries.push(String(options.query ?? ''));
+
+                const refs = Array.from(String(options.query ?? '').matchAll(/"(\/hierarchicalrequirement\/\d+)"/g))
+                    .map(match => match[1]);
+
+                return refs.map((ref, index) => ({
+                    _ref: `/task/${ref.split('/').pop()}${index}`,
+                    _type: 'task',
+                    Name: `Task for ${ref}`,
+                    WorkProduct: { _ref: ref }
+                }));
+            }
+        });
+
+        const loader = new RelationshipLoader(client as any, { inverseQueryChunkSize: 2 });
+        const stories = [1, 2, 2, 3, 4].map(id => new Story({
+            _ref: `/hierarchicalrequirement/${id}`,
+            _type: 'hierarchicalrequirement'
+        }));
+
+        await loader.loadRelationships(stories, ['Tasks'], {
+            hierarchicalrequirement: Story,
+            task: RallyEntity
+        });
+
+        expect(queries).to.deep.equal([
+            '((WorkProduct = "/hierarchicalrequirement/1") OR (WorkProduct = "/hierarchicalrequirement/2"))',
+            '((WorkProduct = "/hierarchicalrequirement/3") OR (WorkProduct = "/hierarchicalrequirement/4"))'
+        ]);
+        expect(stories[0]._data.Tasks).to.have.length(1);
+        expect(stories[1]._data.Tasks).to.have.length(1);
+        expect(stories[2]._data.Tasks).to.have.length(1);
+        expect(stories[3]._data.Tasks).to.have.length(1);
+        expect(stories[4]._data.Tasks).to.have.length(1);
+    });
+
     it('should keep tag shortcut handling for tag collections', async () => {
         class ArtifactModel extends RallyEntity {
             static entityType = 'artifact';
@@ -549,10 +596,12 @@ describe('RelationshipLoader', () => {
     it('should apply configured loader cache limits', () => {
         const loader = new RelationshipLoader(createMockClient() as any, {
             maxDepth: 2,
-            maxCacheEntries: 3
+            maxCacheEntries: 3,
+            inverseQueryChunkSize: 4
         });
 
         expect((loader as any).maxDepth).to.equal(2);
         expect((loader as any).maxCacheEntries).to.equal(3);
+        expect((loader as any).inverseQueryChunkSize).to.equal(4);
     });
 });

@@ -273,7 +273,8 @@ export class RallyRepository<T extends RallyEntity = any> {
             throw new Error('ObjectID is required');
         }
 
-        return this.client.delete(this.entityType, objectId);
+        await this.client.delete(this.entityType, objectId);
+        return true;
     }
 
     /**
@@ -292,7 +293,8 @@ export class RallyRepository<T extends RallyEntity = any> {
             throw new Error('Cannot determine ObjectID from provided argument');
         }
 
-        return this.delete(objectId);
+        await this.delete(objectId);
+        return true;
     }
 
     /**
@@ -868,22 +870,20 @@ export class RallyRepository<T extends RallyEntity = any> {
 
         this.client.logger?.debug(`[${this.entityType}] Processing tags: ${validTagNames.join(', ')}`);
 
-        const tagReferences: any[] = [];
+        const resolvedTags = new Map<string, any>();
+        const missingTagNames: string[] = [];
         const failedTagNames: string[] = [];
 
         for (const tagName of validTagNames) {
             try {
-                let tag = await this._findTagByName(tagName);
-                if (!tag) {
-                    tag = await this._createTag(tagName);
-                }
-                if (tag && tag._ref) {
-                    tagReferences.push({ _ref: tag._ref });
+                const tag = await this._findTagByName(tagName);
+                if (tag) {
+                    resolvedTags.set(tagName, tag);
                 } else {
-                    failedTagNames.push(tagName);
+                    missingTagNames.push(tagName);
                 }
             } catch (error: any) {
-                this.client.logger?.error(`[${this.entityType}] Failed to process tag "${tagName}":`, error.message);
+                this.client.logger?.error(`[${this.entityType}] Failed to resolve tag "${tagName}":`, error.message);
                 failedTagNames.push(tagName);
             }
         }
@@ -893,6 +893,32 @@ export class RallyRepository<T extends RallyEntity = any> {
                 `Failed to resolve or create Rally tags for ${this.entityType}: ${failedTagNames.join(', ')}`
             );
         }
+
+        for (const tagName of missingTagNames) {
+            try {
+                const tag = await this._createTag(tagName);
+                if (!tag || !tag._ref) {
+                    failedTagNames.push(tagName);
+                    continue;
+                }
+
+                resolvedTags.set(tagName, tag);
+            } catch (error: any) {
+                this.client.logger?.error(`[${this.entityType}] Failed to create tag "${tagName}":`, error.message);
+                failedTagNames.push(tagName);
+            }
+        }
+
+        if (failedTagNames.length > 0) {
+            throw new Error(
+                `Failed to resolve or create Rally tags for ${this.entityType}: ${failedTagNames.join(', ')}`
+            );
+        }
+
+        const tagReferences = validTagNames
+            .map(tagName => resolvedTags.get(tagName))
+            .filter(tag => tag && tag._ref)
+            .map(tag => ({ _ref: tag._ref }));
 
         this.client.logger?.debug(`[${this.entityType}] Processed ${tagReferences.length} tag references`);
         return tagReferences;
@@ -908,7 +934,7 @@ export class RallyRepository<T extends RallyEntity = any> {
             return results.length > 0 ? results[0] : null;
         } catch (error: any) {
             this.client.logger?.error(`[${this.entityType}] Failed to find tag "${tagName}":`, error.message);
-            return null;
+            throw error;
         }
     }
 

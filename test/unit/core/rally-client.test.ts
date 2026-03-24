@@ -347,7 +347,7 @@ describe('RallyClient', function () {
             );
         });
 
-        it('should return false when delete returns operation errors', async () => {
+        it('should throw when delete returns operation errors', async () => {
             const client = new RallyClient({
                 apiKey: 'test-key',
                 allowDelete: true,
@@ -361,8 +361,10 @@ describe('RallyClient', function () {
                 })
             });
 
-            const deleted = await client.delete('defect', 123);
-            expect(deleted).to.equal(false);
+            await expectAsyncError(
+                () => client.delete('defect', 123),
+                /Rally delete failed for defect 123: Delete denied/
+            );
         });
 
         it('should throw when update response explicitly reports failure even without errors', async () => {
@@ -438,6 +440,23 @@ describe('RallyClient', function () {
 
             const deleted = await client.delete('defect', 123);
             expect(deleted).to.equal(true);
+        });
+
+        it('should throw when delete response is ambiguous and does not confirm success', async () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                allowDelete: true,
+                fetch: createMockFetch({
+                    '/defect/123': {
+                        Warnings: []
+                    }
+                })
+            });
+
+            await expectAsyncError(
+                () => client.delete('defect', 123),
+                /response did not confirm success/
+            );
         });
     });
 

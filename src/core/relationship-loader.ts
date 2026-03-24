@@ -34,12 +34,14 @@ export class RelationshipLoader {
     private cache: Map<string, IRelationshipEntity>;
     private maxCacheEntries: number;
     private maxDepth: number;
+    private inverseQueryChunkSize: number;
 
     constructor(rallyClient: RallyClient, options: IRelationshipLoaderOptions = {}) {
         this.client = rallyClient;
         this.cache = new Map();
         this.maxCacheEntries = options.maxCacheEntries ?? 5000;
         this.maxDepth = options.maxDepth ?? 5;
+        this.inverseQueryChunkSize = options.inverseQueryChunkSize ?? 50;
     }
 
     /**
@@ -334,8 +336,6 @@ export class RelationshipLoader {
             return;
         }
 
-        const query = this._buildInverseQuery(relation.foreignKey, entityRefs);
-
         const prefetchFields = new Set<string>([relation.foreignKey]);
 
         const scalarLeaves = this._collectScalarLeaves(relationConfig);
@@ -353,11 +353,16 @@ export class RelationshipLoader {
             }
         }
 
-        const relatedEntities = await this.client.queryAll(relation.entity, {
-            query,
-            fetch: Array.from(prefetchFields).join(','),
-            pagesize: 2000
-        });
+        const refChunks = this._chunkArray(entityRefs, this.inverseQueryChunkSize);
+        const relatedEntityType = relation.entity;
+        const foreignKey = relation.foreignKey;
+        const relatedEntities = (await Promise.all(refChunks.map(refChunk =>
+            this.client.queryAll(relatedEntityType, {
+                query: this._buildInverseQuery(foreignKey, refChunk),
+                fetch: Array.from(prefetchFields).join(','),
+                pagesize: 2000
+            })
+        ))).flat();
 
         const relatedByForeignKey = new Map<string, any[]>();
         for (const related of relatedEntities) {
@@ -412,6 +417,19 @@ export class RelationshipLoader {
 
         const conditions = entityRefs.map(ref => `(${foreignKey} = "${this._toRelativeRef(ref)}")`);
         return `(${conditions.join(' OR ')})`;
+    }
+
+    private _chunkArray<T>(items: T[], chunkSize: number): T[][] {
+        if (items.length === 0) {
+            return [];
+        }
+
+        const chunks: T[][] = [];
+        for (let index = 0; index < items.length; index += chunkSize) {
+            chunks.push(items.slice(index, index + chunkSize));
+        }
+
+        return chunks;
     }
 
     /**

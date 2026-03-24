@@ -18,6 +18,7 @@ export interface IQueueOptions {
 export interface IRelationshipLoaderOptions {
     maxDepth?: number;
     maxCacheEntries?: number;
+    inverseQueryChunkSize?: number;
 }
 
 export interface IRallyClientConfig {
@@ -746,7 +747,7 @@ export class RallyClient {
             })
         );
 
-        const { success } = this._logAndHandleOperation('delete', type, objectId, result, { throwOnErrors: false });
+        const { success } = this._logAndHandleOperation('delete', type, objectId, result, { throwOnErrors: true });
 
         return success || false;
     }
@@ -951,6 +952,10 @@ export class RallyClient {
 
         if (relationshipLoaderOptions?.maxCacheEntries !== undefined) {
             this._normalizeIntegerOption(relationshipLoaderOptions.maxCacheEntries, 'relationshipLoaderOptions.maxCacheEntries', 1);
+        }
+
+        if (relationshipLoaderOptions?.inverseQueryChunkSize !== undefined) {
+            this._normalizeIntegerOption(relationshipLoaderOptions.inverseQueryChunkSize, 'relationshipLoaderOptions.inverseQueryChunkSize', 1);
         }
     }
 

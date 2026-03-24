@@ -15,6 +15,16 @@ interface IIncludeNode {
     children: Record<string, IIncludeNode>;
 }
 
+interface ITagRef {
+    _ref: string;
+}
+
+interface IRallyTagData {
+    _ref?: string;
+    Name?: string;
+    ObjectID?: string | number;
+}
+
 /**
  * Repository pattern implementation for Rally entities
  * Provides repository pattern interface for CRUD operations
@@ -64,7 +74,7 @@ export class RallyRepository<T extends RallyEntity = any> {
         const normalized = this._normalizeOptions(options);
         const { include, ...queryOptions } = normalized;
 
-        let entities = await this.client.query(this.entityType, queryOptions);
+        let entities = await this.client.query<any>(this.entityType, queryOptions);
 
         entities = this._wrapEntities(entities);
 
@@ -93,7 +103,7 @@ export class RallyRepository<T extends RallyEntity = any> {
 
         this.client.logger?.debug(`[${this.entityType}] Query: ${query}`);
 
-        let entities = await this.client.query(this.entityType, {
+        let entities = await this.client.query<any>(this.entityType, {
             query,
             ...queryOptions
         });
@@ -125,7 +135,7 @@ export class RallyRepository<T extends RallyEntity = any> {
 
         this.client.logger?.debug(`[${this.entityType}] QueryAll: ${query}`);
 
-        let entities = await this.client.queryAll(this.entityType, {
+        let entities = await this.client.queryAll<any>(this.entityType, {
             query,
             ...queryOptions
         });
@@ -155,7 +165,7 @@ export class RallyRepository<T extends RallyEntity = any> {
             const normalized = this._normalizeOptions(options);
             const { include, ...queryOptions } = normalized;
 
-            entity = await this.client.get(this.entityType, String(idOrWhere), queryOptions) as T | null;
+            entity = await this.client.get<T>(this.entityType, String(idOrWhere), queryOptions) as T | null;
 
             if (!entity) {
                 return null;
@@ -856,7 +866,7 @@ export class RallyRepository<T extends RallyEntity = any> {
         return Object.keys(nestedObject).length > 0 ? nestedObject : undefined;
     }
 
-    private async _processTagsArray(tagNames: string[]): Promise<any[]> {
+    private async _processTagsArray(tagNames: string[]): Promise<ITagRef[]> {
         if (!Array.isArray(tagNames)) {
             return [];
         }
@@ -871,14 +881,13 @@ export class RallyRepository<T extends RallyEntity = any> {
 
         this.client.logger?.debug(`[${this.entityType}] Processing tags: ${validTagNames.join(', ')}`);
 
-        const resolvedTags = new Map<string, any>();
-        const failedTagNames: string[] = [];
+        const resolvedTags = new Map<string, IRallyTagData>();
 
         // Batch-find all requested tags in a single query to minimise round-trips
         try {
             const existingTags = await this._findTagsByNames(validTagNames);
             for (const tag of existingTags) {
-                if (tag && tag.Name) {
+                if (tag?.Name) {
                     resolvedTags.set(tag.Name, tag);
                 }
             }
@@ -889,38 +898,41 @@ export class RallyRepository<T extends RallyEntity = any> {
 
         const missingTagNames = validTagNames.filter(name => !resolvedTags.has(name));
 
-        for (const tagName of missingTagNames) {
-            try {
-                const tag = await this._createTag(tagName);
-                if (!tag || !tag._ref) {
-                    failedTagNames.push(tagName);
-                    continue;
-                }
-
-                resolvedTags.set(tagName, tag);
-            } catch (error: any) {
-                this.client.logger?.error(`[${this.entityType}] Failed to create tag "${tagName}":`, error.message);
-                failedTagNames.push(tagName);
-            }
-        }
-
-        if (failedTagNames.length > 0) {
-            throw new RallyOperationError(
-                `Failed to resolve or create Rally tags for ${this.entityType}: ${failedTagNames.join(', ')}`,
-                failedTagNames.map(n => `Could not create tag: ${n}`)
+        if (missingTagNames.length > 0) {
+            this.client.logger?.warn(
+                `[${this.entityType}] Creating ${missingTagNames.length} tag(s): ${missingTagNames.join(', ')}. ` +
+                'This operation is not atomic — tags already created will not be rolled back on failure.'
             );
         }
 
+        for (const tagName of missingTagNames) {
+            let tag: IRallyTagData;
+            try {
+                tag = await this._createTag(tagName);
+            } catch (error: any) {
+                throw new RallyOperationError(
+                    `Failed to resolve or create Rally tags for ${this.entityType}: ${tagName}`,
+                    [error.message ?? `Could not create tag: ${tagName}`]
+                );
+            }
+            if (!tag?._ref) {
+                throw new RallyOperationError(
+                    `Failed to resolve or create Rally tags for ${this.entityType}: ${tagName}`,
+                    [`Could not create tag: ${tagName}`]
+                );
+            }
+            resolvedTags.set(tagName, tag);
+        }
+
         const tagReferences = validTagNames
-            .map(tagName => resolvedTags.get(tagName))
-            .filter(tag => tag && tag._ref)
-            .map(tag => ({ _ref: tag._ref }));
+            .filter(tagName => !!resolvedTags.get(tagName)?._ref)
+            .map(tagName => ({ _ref: resolvedTags.get(tagName)!._ref as string }));
 
         this.client.logger?.debug(`[${this.entityType}] Processed ${tagReferences.length} tag references`);
         return tagReferences;
     }
 
-    private async _findTagsByNames(tagNames: string[]): Promise<any[]> {
+    private async _findTagsByNames(tagNames: string[]): Promise<IRallyTagData[]> {
         if (tagNames.length === 0) {
             return [];
         }
@@ -928,17 +940,17 @@ export class RallyRepository<T extends RallyEntity = any> {
         const queryParts = tagNames.map(name => `(Name = "${this._escapeValue(name)}")`);
         const query = queryParts.length === 1 ? queryParts[0] : `(${queryParts.join(' OR ')})`;
 
-        return this.client.query('tag', {
+        return this.client.query<IRallyTagData>('tag', {
             query,
             fetch: 'ObjectID,Name',
             pagesize: Math.min(tagNames.length + 10, 2000)
         });
     }
 
-    private async _createTag(tagName: string): Promise<any> {
+    private async _createTag(tagName: string): Promise<IRallyTagData> {
         try {
             this.client.logger?.info(`[${this.entityType}] Creating tag: ${tagName}`);
-            const tag = await this.client.create('tag', { Name: tagName });
+            const tag = await this.client.create<IRallyTagData>('tag', { Name: tagName });
             this.client.logger?.info(`[${this.entityType}] Successfully created tag "${tagName}" with ObjectID: ${tag?.ObjectID}`);
             return tag;
         } catch (error: any) {

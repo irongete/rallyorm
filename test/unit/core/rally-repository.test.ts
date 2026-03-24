@@ -606,5 +606,101 @@ describe('RallyRepository', function () {
 
             expect(opts.include === null || opts.include === undefined || opts.include?.length === 0).to.equal(true);
         });
+
+        it('should skip the client update call when a tracked entity has no changes at all', async () => {
+            let updateCalls = 0;
+            const client = createMockClient({
+                update: async () => {
+                    updateCalls += 1;
+                    return { ObjectID: '12345' };
+                }
+            });
+            const repo = new RallyRepository('defect', client, RallyEntity);
+            const entity = new RallyEntity({ ObjectID: '12345', Name: 'Unchanged' });
+
+            // Entity is tracked but no property has been modified
+            const result = await repo.update('12345', entity);
+
+            expect(updateCalls).to.equal(0);
+            expect(result).to.equal(entity);
+        });
+
+        it('should return a fallback entity when update cleanData is empty and updateData is not a tracked entity', async () => {
+            let updateCalls = 0;
+            const client = createMockClient({
+                update: async () => {
+                    updateCalls += 1;
+                    return { ObjectID: '12345' };
+                }
+            });
+            const repo = new RallyRepository('defect', client);
+
+            // Plain object whose only fields are read-only: after stripping they leave cleanData empty
+            const result = await repo.update('12345', { _ref: '/defect/12345', FormattedID: 'DE99' });
+
+            expect(updateCalls).to.equal(0);
+            expect((result as any).ObjectID).to.equal('12345');
+        });
+
+        it('should return true from exists when an entity matches criteria', async () => {
+            const client = createMockClient({ query: async () => [{ ObjectID: '1' }] });
+            const repo = new RallyRepository('defect', client);
+
+            const result = await repo.exists({ Name: 'Test' });
+
+            expect(result).to.equal(true);
+        });
+
+        it('should pass a where query to count', async () => {
+            let capturedOptions: any;
+            const client = createMockClient({
+                queryCount: async (_type: string, opts: any) => {
+                    capturedOptions = opts;
+                    return 7;
+                }
+            });
+            const repo = new RallyRepository('defect', client);
+
+            const result = await repo.count({ Name: 'My Defect' });
+
+            expect(result).to.equal(7);
+            expect(capturedOptions?.query).to.include('Name');
+        });
+
+        it('should return null from findOne when the entity is not found', async () => {
+            const client = createMockClient({ get: async () => null });
+            const repo = new RallyRepository('defect', client);
+
+            const result = await repo.findOne('99999');
+
+            expect(result).to.be.null;
+        });
+
+        it('should throw on the first failing tag creation rather than attempting all tags', async () => {
+            let createCalls = 0;
+            const client = createMockClient({
+                query: async () => [],
+                create: async (type: string) => {
+                    if (type === 'tag') {
+                        createCalls += 1;
+                        throw new Error('Tag service unavailable');
+                    }
+                    return { ObjectID: '123' };
+                }
+            });
+            const repo = new RallyRepository('defect', client);
+
+            try {
+                await repo.save({
+                    Name: 'Defect with 3 tags',
+                    Tags: ['TagA', 'TagB', 'TagC']
+                });
+                expect.fail('Expected save to reject');
+            } catch (error: any) {
+                // Fail-fast: only 1 create call for the first tag, not 3
+                expect(createCalls).to.equal(1);
+                expect(String(error?.message ?? error)).to.include('Failed to resolve or create Rally tags');
+            }
+        });
     });
 });

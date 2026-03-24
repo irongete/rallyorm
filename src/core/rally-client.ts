@@ -89,8 +89,34 @@ export interface IRallyLogger {
     error: (...args: any[]) => void;
 }
 
+interface IRallyRawResponse {
+    QueryResult?: {
+        Results?: unknown[];
+        TotalResultCount?: number;
+        [key: string]: unknown;
+    };
+    CreateResult?: IRallyRawResponse;
+    OperationResult?: IRallyRawResponse;
+    DeleteResult?: IRallyRawResponse;
+    Object?: IRallyRawResponse;
+    ObjectID?: number | string;
+    Errors?: string[];
+    Warnings?: string[];
+    Success?: boolean;
+    [key: string]: unknown;
+}
+
+interface IFetchMeta {
+    op?: string;
+    type?: string;
+    objectId?: string | number;
+    start?: number;
+    pagesize?: number;
+    ref?: string;
+}
+
 interface IRallyOperationResult {
-    op: any;
+    op: IRallyRawResponse | null;
     errors: string[] | null;
     warnings: string[];
     success?: boolean;
@@ -265,7 +291,7 @@ export class RallyClient {
     /**
      * Build query parameters with workspace context
      */
-    private _params(extra: Record<string, any> = {}): Record<string, any> {
+    private _params(extra: Record<string, unknown> = {}): Record<string, unknown> {
         const params = { ...extra };
         if (this.workspace) {
             params.workspace = this.workspace;
@@ -307,7 +333,7 @@ export class RallyClient {
     /**
      * Execute request with retry logic and queue management
      */
-    private async _requestWithRetry(taskFn: () => Promise<any>, meta: any = {}): Promise<any> {
+    private async _requestWithRetry(taskFn: () => Promise<IRallyRawResponse>, meta: IFetchMeta = {}): Promise<IRallyRawResponse> {
         return this.queue.add(() =>
             pRetry(taskFn, {
                 retries: this.retries,
@@ -328,7 +354,7 @@ export class RallyClient {
     /**
      * Perform HTTP request with JSON handling
      */
-    private async _fetchJson(url: string, { method = 'GET', headers = {}, params, body, meta = {} }: { method?: string; headers?: Record<string, string>; params?: any; body?: any; meta?: any } = {}): Promise<any> {
+    private async _fetchJson(url: string, { method = 'GET', headers = {}, params, body, meta = {} }: { method?: string; headers?: Record<string, string>; params?: Record<string, unknown>; body?: unknown; meta?: IFetchMeta } = {}): Promise<IRallyRawResponse> {
         const requestUrl = new URL(url);
         const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -430,11 +456,11 @@ export class RallyClient {
                 this.logger.debug(`[req:${requestId}] ${method} ${this._formatUrlForLog(requestUrl)} [status=${response.status}]`);
 
                 if (!responseText) {
-                    return {};
+                    return {} as IRallyRawResponse;
                 }
 
                 try {
-                    return JSON.parse(responseText);
+                    return JSON.parse(responseText) as IRallyRawResponse;
                 } catch (error: any) {
                     throw new RallyNetworkError(`Retryable: Invalid JSON response - ${error.message}`);
                 }
@@ -464,7 +490,7 @@ export class RallyClient {
     /**
      * Query Rally entities with pagination
      */
-    async query(type: string, { query, fetch, start = 1, pagesize = 200, order }: IQueryOptions = {}): Promise<any[]> {
+    async query<T = unknown>(type: string, { query, fetch, start = 1, pagesize = 200, order }: IQueryOptions = {}): Promise<T[]> {
         if (!type || typeof type !== 'string') {
             throw new RallyValidationError('Entity type is required and must be a string');
         }
@@ -478,7 +504,7 @@ export class RallyClient {
             meta: { op: 'query', type, start: startIndex, pagesize: pageSize }
         });
 
-        return result?.QueryResult?.Results ?? [];
+        return (result?.QueryResult?.Results ?? []) as T[];
     }
 
     /**
@@ -501,7 +527,7 @@ export class RallyClient {
     /**
      * Query all Rally entities (handles pagination automatically)
      */
-    async queryAll(type: string, { query, fetch, order, pagesize = 200, maxResults, timeoutMs, start = 1 }: IQueryOptions = {}): Promise<any[]> {
+    async queryAll<T = unknown>(type: string, { query, fetch, order, pagesize = 200, maxResults, timeoutMs, start = 1 }: IQueryOptions = {}): Promise<T[]> {
         if (!type || typeof type !== 'string') {
             throw new RallyValidationError('Entity type is required and must be a string');
         }
@@ -530,13 +556,13 @@ export class RallyClient {
         }
 
         const totalCount = queryResult.TotalResultCount ?? 0;
-        const firstPageResults = queryResult.Results || [];
+        const firstPageResults: T[] = (queryResult.Results || []) as T[];
 
         this.logger.debug(`Found ${totalCount} total results, fetched ${firstPageResults.length} in first page`);
 
-        return this._paginateResults(
+        return this._paginateResults<T>(
             firstPageResults,
-            totalCount,
+            typeof totalCount === 'number' ? totalCount : 0,
             startIndex,
             pageSize,
             normalizedMaxResults,
@@ -545,7 +571,7 @@ export class RallyClient {
                 method: 'GET',
                 params: { query, fetch, start: nextStart, pagesize: pageSize, order },
                 meta: { op: 'queryAll:page', type, start: nextStart }
-            }).then(data => data?.QueryResult?.Results || []),
+            }).then(data => (data?.QueryResult?.Results || []) as T[]),
             'Operation'
         );
     }
@@ -553,7 +579,7 @@ export class RallyClient {
     /**
      * Get a single Rally entity by ObjectID
      */
-    async get(type: string, objectId: string | number, { fetch }: Pick<IQueryOptions, 'fetch'> = {}): Promise<any> {
+    async get<T = unknown>(type: string, objectId: string | number, { fetch }: Pick<IQueryOptions, 'fetch'> = {}): Promise<T> {
         if (!type || typeof type !== 'string') {
             throw new RallyValidationError('Entity type is required and must be a string');
         }
@@ -567,13 +593,13 @@ export class RallyClient {
             meta: { op: 'get', type, objectId }
         });
 
-        return this._extractEntityFromResponse(result, type);
+        return this._extractEntityFromResponse(result, type) as T;
     }
 
     /**
      * Query a Rally collection reference returned by WSAPI.
      */
-    async queryCollection(collectionRef: string, { fetch, start = 1, pagesize = 200 }: ICollectionQueryOptions = {}): Promise<any[]> {
+    async queryCollection<T = unknown>(collectionRef: string, { fetch, start = 1, pagesize = 200 }: ICollectionQueryOptions = {}): Promise<T[]> {
         if (!collectionRef || typeof collectionRef !== 'string') {
             throw new RallyValidationError('Collection reference is required and must be a string');
         }
@@ -587,13 +613,13 @@ export class RallyClient {
             pagesize: pageSize
         });
 
-        return result?.QueryResult?.Results ?? result?.Results ?? [];
+        return (result?.QueryResult?.Results ?? result?.Results ?? []) as T[];
     }
 
     /**
      * Query all items from a Rally collection reference.
      */
-    async queryCollectionAll(collectionRef: string, { fetch, start = 1, pagesize = 200, maxResults, timeoutMs }: ICollectionQueryOptions = {}): Promise<any[]> {
+    async queryCollectionAll<T = unknown>(collectionRef: string, { fetch, start = 1, pagesize = 200, maxResults, timeoutMs }: ICollectionQueryOptions = {}): Promise<T[]> {
         if (!collectionRef || typeof collectionRef !== 'string') {
             throw new RallyValidationError('Collection reference is required and must be a string');
         }
@@ -618,14 +644,14 @@ export class RallyClient {
 
         const queryResult = firstResult?.QueryResult;
         if (!queryResult) {
-            return firstResult?.Results ?? [];
+            return (firstResult?.Results as T[] | undefined ?? []);
         }
 
         const totalCount = queryResult.TotalResultCount ?? 0;
 
-        return this._paginateResults(
-            queryResult.Results || [],
-            totalCount,
+        return this._paginateResults<T>(
+            (queryResult.Results || []) as T[],
+            typeof totalCount === 'number' ? totalCount : 0,
             startIndex,
             pageSize,
             normalizedMaxResults,
@@ -634,7 +660,7 @@ export class RallyClient {
                 fetch,
                 start: nextStart,
                 pagesize: pageSize
-            }).then(data => data?.QueryResult?.Results ?? data?.Results ?? []),
+            }).then(data => (data?.QueryResult?.Results ?? data?.Results ?? []) as T[]),
             'Collection query'
         );
     }
@@ -643,16 +669,16 @@ export class RallyClient {
      * Shared pagination driver used by queryAll and queryCollectionAll.
      * Fetches remaining pages in parallel batches and returns up to the effective max items.
      */
-    private async _paginateResults(
-        firstPageResults: any[],
+    private async _paginateResults<T>(
+        firstPageResults: T[],
         totalCount: number,
         startIndex: number,
         pageSize: number,
         effectiveMaxResults: number | undefined,
         operationDeadline: number | null,
-        fetchPage: (nextStart: number) => Promise<any[]>,
+        fetchPage: (nextStart: number) => Promise<T[]>,
         context: string
-    ): Promise<any[]> {
+    ): Promise<T[]> {
         const remainingFromStart = Math.max(0, totalCount - (startIndex - 1));
         const effective = effectiveMaxResults !== undefined
             ? Math.min(effectiveMaxResults, remainingFromStart)
@@ -691,7 +717,7 @@ export class RallyClient {
         return results.slice(0, effective);
     }
 
-    private async _queryCollectionPage(collectionRef: string, { fetch, start, pagesize }: Required<Pick<ICollectionQueryOptions, 'start' | 'pagesize'>> & Pick<ICollectionQueryOptions, 'fetch'>): Promise<any> {
+    private async _queryCollectionPage(collectionRef: string, { fetch, start, pagesize }: Required<Pick<ICollectionQueryOptions, 'start' | 'pagesize'>> & Pick<ICollectionQueryOptions, 'fetch'>): Promise<IRallyRawResponse> {
         const startIndex = this._normalizeIntegerOption(start, 'start', 1);
         const pageSize = this._normalizeIntegerOption(pagesize, 'pagesize', 1);
 
@@ -708,7 +734,7 @@ export class RallyClient {
     /**
      * Create a new Rally entity
      */
-    async create(type: string, payload: any): Promise<any> {
+    async create<T = unknown>(type: string, payload: any): Promise<T> {
         this._checkWritePermission('create', type);
 
         if (!type || typeof type !== 'string') {
@@ -736,13 +762,13 @@ export class RallyClient {
         const createdEntity = this._extractEntityFromResponse(result, type);
         this.logger.info(`Successfully created ${type} with ObjectID: ${createdEntity?.ObjectID}`);
 
-        return createdEntity;
+        return createdEntity as T;
     }
 
     /**
      * Update an existing Rally entity
      */
-    async update(type: string, objectId: string | number, payload: any): Promise<any> {
+    async update<T = unknown>(type: string, objectId: string | number, payload: any): Promise<T> {
         this._checkWritePermission('update', type);
 
         if (!type || typeof type !== 'string') {
@@ -773,7 +799,7 @@ export class RallyClient {
         const updatedEntity = this._extractEntityFromResponse(result, type);
         this.logger.info(`Successfully updated ${type} ${objectId}`);
 
-        return updatedEntity;
+        return updatedEntity as T;
     }
 
     /**
@@ -807,18 +833,18 @@ export class RallyClient {
     /**
      * Analyze a Rally response for OperationResult/CreateResult/DeleteResult arrays
      */
-    private _analyzeOperationResult(result: any): IRallyOperationResult {
-        const op = result?.OperationResult || result?.CreateResult || result?.DeleteResult || null;
-        const errors = Array.isArray(op?.Errors)
-            ? op.Errors
-            : (Array.isArray(result?.Errors) ? result.Errors : null);
-        const warnings = Array.isArray(op?.Warnings)
-            ? op.Warnings
-            : (Array.isArray(result?.Warnings) ? result.Warnings : []);
-        return { op, errors, warnings };
+    private _analyzeOperationResult(result: IRallyRawResponse): IRallyOperationResult {
+        const op = result.OperationResult ?? result.CreateResult ?? result.DeleteResult ?? null;
+        const opErrors = op?.Errors;
+        const opWarnings = op?.Warnings;
+        const errors: string[] | null = Array.isArray(opErrors) ? opErrors
+            : (Array.isArray(result.Errors) ? result.Errors : null);
+        const warnings: string[] = Array.isArray(opWarnings) ? opWarnings
+            : (Array.isArray(result.Warnings) ? result.Warnings : []);
+        return { op: op ?? null, errors, warnings };
     }
 
-    private _hasStructuredEntityPayload(result: any, type: string): boolean {
+    private _hasStructuredEntityPayload(result: IRallyRawResponse, type: string): boolean {
         if (!result || typeof result !== 'object') {
             return false;
         }
@@ -841,7 +867,7 @@ export class RallyClient {
         });
     }
 
-    private _resolveOperationSuccess(action: 'create' | 'update' | 'delete', type: string, result: any, op: any, errors: string[] | null): boolean {
+    private _resolveOperationSuccess(action: 'create' | 'update' | 'delete', type: string, result: IRallyRawResponse, op: IRallyRawResponse | null, errors: string[] | null): boolean {
         if (Array.isArray(errors) && errors.length > 0) {
             return false;
         }
@@ -865,7 +891,7 @@ export class RallyClient {
     /**
      * Unified OperationResult logging and error handling
      */
-    private _logAndHandleOperation(action: 'create' | 'update' | 'delete', type: string, objectId: string | number | undefined, result: any, { throwOnErrors = false } = {}): IRallyOperationResult {
+    private _logAndHandleOperation(action: 'create' | 'update' | 'delete', type: string, objectId: string | number | undefined, result: IRallyRawResponse, { throwOnErrors = false } = {}): IRallyOperationResult {
         const { op, errors, warnings } = this._analyzeOperationResult(result);
         const success = this._resolveOperationSuccess(action, type, result, op, errors);
 
@@ -904,7 +930,7 @@ export class RallyClient {
     /**
      * Extract entity from Rally API response
      */
-    private _extractEntityFromResponse(response: any, type: string): any {
+    private _extractEntityFromResponse(response: IRallyRawResponse, type: string): IRallyRawResponse {
         if (!response || typeof response !== 'object') {
             return response;
         }
@@ -923,7 +949,7 @@ export class RallyClient {
 
         const entityKey = this._getEntityKey(type);
         if (response[entityKey]) {
-            return response[entityKey];
+            return response[entityKey] as IRallyRawResponse;
         }
 
         const normalizedEntityKey = entityKey.toLowerCase();
@@ -933,7 +959,7 @@ export class RallyClient {
             const normalizedResponseKey = String(responseKey).toLowerCase();
 
             if (normalizedResponseKey === normalizedEntityKey || normalizedResponseKey === lastEntitySegment) {
-                return value;
+                return value as IRallyRawResponse;
             }
         }
 
@@ -943,7 +969,7 @@ export class RallyClient {
     /**
      * Determine if OperationResult errors indicate a concurrency conflict
      */
-    private _isConcurrencyConflict(errors: any[] | null): boolean {
+    private _isConcurrencyConflict(errors: string[] | null): boolean {
         if (!Array.isArray(errors)) {
             return false;
         }
@@ -954,10 +980,10 @@ export class RallyClient {
     /**
      * Run a write operation and retry when Rally reports a concurrency conflict in OperationResult.Errors
      */
-    private async _performWithConcurrencyRetry(label: string, fn: () => Promise<any>): Promise<any> {
+    private async _performWithConcurrencyRetry(label: string, fn: () => Promise<IRallyRawResponse>): Promise<IRallyRawResponse> {
         const attemptFn = async () => {
             const result = await fn();
-            const { errors } = this._analyzeOperationResult(result) || {};
+            const { errors } = this._analyzeOperationResult(result);
             if (this._isConcurrencyConflict(errors)) {
                 this.logger.warn(`${label}: concurrency conflict detected, will retry`);
                 throw new RallyOperationError('Retryable: Concurrency conflict', errors || []);

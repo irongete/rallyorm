@@ -544,7 +544,7 @@ describe('RallyClient', function () {
                 }
             });
 
-            const results = await client.queryCollectionAll('/project/1/TeamMembers', {
+            const results = await client.queryCollectionAll<{ ObjectID: number }>('/project/1/TeamMembers', {
                 pagesize: 2
             });
 
@@ -785,7 +785,7 @@ describe('RallyClient', function () {
                 }
             });
 
-            const result = await client.create('defect', { Name: 'Test' });
+            const result = await client.create<{ ObjectID: number }>('defect', { Name: 'Test' });
 
             expect(result.ObjectID).to.equal(999);
             expect(callCount).to.equal(2);
@@ -882,6 +882,190 @@ describe('RallyClient', function () {
 
             expect(results).to.have.length(1);
             expect(callCount).to.equal(2);
+        });
+    });
+
+    describe('Additional Coverage', () => {
+        it('should return empty object when the response body is empty', async () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                fetch: async () => ({
+                    ok: true, status: 200, statusText: 'OK',
+                    headers: { get: () => null, getSetCookie: () => [] },
+                    text: async () => ''
+                } as unknown as Response)
+            });
+
+            const results = await client.query('defect');
+            expect(results).to.deep.equal([]);
+        });
+
+        it('should throw a non-retryable error for HTTP 4xx responses', async () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                retries: 2,
+                retryDelayMs: 10,
+                fetch: async () => ({
+                    ok: false, status: 403, statusText: 'Forbidden',
+                    headers: { get: () => null, getSetCookie: () => [] },
+                    text: async () => 'Not authorized'
+                } as unknown as Response)
+            });
+
+            await expectAsyncError(() => client.query('defect'), /403/);
+        });
+
+        it('should retry after HTTP 429 using the Retry-After header delay', async () => {
+            let callCount = 0;
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                retries: 1,
+                retryDelayMs: 100,
+                fetch: async () => {
+                    callCount += 1;
+                    if (callCount === 1) {
+                        return {
+                            ok: false, status: 429, statusText: 'Too Many Requests',
+                            headers: { get: (name: string) => name === 'retry-after' ? '0' : null, getSetCookie: () => [] },
+                            text: async () => ''
+                        } as unknown as Response;
+                    }
+                    return {
+                        ok: true, status: 200, statusText: 'OK',
+                        headers: { get: () => null, getSetCookie: () => [] },
+                        text: async () => JSON.stringify({ QueryResult: { Results: [], TotalResultCount: 0 } })
+                    } as unknown as Response;
+                }
+            });
+
+            const results = await client.query('defect');
+            expect(results).to.deep.equal([]);
+            expect(callCount).to.equal(2);
+        });
+
+        it('should retry after HTTP 429 using retryDelayMs when Retry-After header is absent', async () => {
+            let callCount = 0;
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                retries: 1,
+                retryDelayMs: 1,
+                fetch: async () => {
+                    callCount += 1;
+                    if (callCount === 1) {
+                        return {
+                            ok: false, status: 429, statusText: 'Too Many Requests',
+                            headers: { get: () => null, getSetCookie: () => [] },
+                            text: async () => ''
+                        } as unknown as Response;
+                    }
+                    return {
+                        ok: true, status: 200, statusText: 'OK',
+                        headers: { get: () => null, getSetCookie: () => [] },
+                        text: async () => JSON.stringify({ QueryResult: { Results: [], TotalResultCount: 0 } })
+                    } as unknown as Response;
+                }
+            });
+
+            const results = await client.query('defect');
+            expect(results).to.deep.equal([]);
+            expect(callCount).to.equal(2);
+        });
+
+        it('should extract entity from a root Object key in the response', () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                fetch: createMockFetch({})
+            });
+            const response = { Object: { ObjectID: 777, Name: 'DirectObject' } };
+            const entity = (client as any)._extractEntityFromResponse(response, 'defect') as Record<string, unknown>;
+            expect(entity.ObjectID).to.equal(777);
+        });
+
+        it('should return false from _isConcurrencyConflict when errors is null', () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                fetch: createMockFetch({})
+            });
+            expect((client as any)._isConcurrencyConflict(null)).to.equal(false);
+        });
+
+        it('should return false from _isConcurrencyConflict when errors is an empty array', () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                fetch: createMockFetch({})
+            });
+            expect((client as any)._isConcurrencyConflict([])).to.equal(false);
+        });
+
+        it('should use a custom start offset when queryAll start is greater than 1', async () => {
+            const capturedUrls: string[] = [];
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                fetch: async (url) => {
+                    capturedUrls.push(String(url));
+                    return {
+                        ok: true, status: 200, statusText: 'OK',
+                        headers: { get: () => null, getSetCookie: () => [] },
+                        text: async () => JSON.stringify({
+                            QueryResult: { Results: [{ ObjectID: 1 }], TotalResultCount: 51 }
+                        })
+                    } as unknown as Response;
+                }
+            });
+
+            await client.queryAll('defect', { start: 51, pagesize: 200 });
+
+            expect(capturedUrls[0]).to.include('start=51');
+        });
+
+        it('should warn and stop pagination early when the operation deadline has passed', async () => {
+            const warnings: string[] = [];
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                fetch: createMockFetch({}),
+                logger: {
+                    debug: () => {},
+                    info: () => {},
+                    warn: (msg: string) => { warnings.push(msg); },
+                    error: () => {}
+                }
+            });
+
+            const pastDeadline = Date.now() - 1000;
+            const results: unknown[] = await (client as any)._paginateResults(
+                [{ ObjectID: 1 }],
+                100,
+                1,
+                1,
+                undefined,
+                pastDeadline,
+                async () => [{ ObjectID: 2 }],
+                'test context'
+            );
+
+            expect(results).to.deep.equal([{ ObjectID: 1 }]);
+            expect(warnings.some(w => w.includes('timeout reached'))).to.equal(true);
+        });
+
+        it('should omit workspace from params when workspace is not configured', async () => {
+            const capturedUrls: string[] = [];
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                fetch: async (url) => {
+                    capturedUrls.push(String(url));
+                    return {
+                        ok: true, status: 200, statusText: 'OK',
+                        headers: { get: () => null, getSetCookie: () => [] },
+                        text: async () => JSON.stringify({
+                            QueryResult: { Results: [], TotalResultCount: 0 }
+                        })
+                    } as unknown as Response;
+                }
+            });
+
+            await client.query('defect');
+
+            expect(capturedUrls[0]).to.not.include('workspace');
         });
     });
 });

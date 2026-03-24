@@ -776,4 +776,130 @@ describe('RelationshipLoader', () => {
 
         expect(warnings.some(w => w.includes('Failed'))).to.equal(true);
     });
-});
+    describe('3.3 Branch Coverage', () => {
+        it('should set empty array when _tagsNameArray is present but empty', async () => {
+            class ArtifactModel extends RallyEntity {
+                static entityType = 'artifact';
+                static relations = {
+                    Tags: { type: 'hasMany', entity: 'tag', foreignKey: 'Tags', isCollection: true }
+                };
+            }
+            // queryAll should never be called because _tagsNameArray is empty
+            const client = createMockClient({ queryAll: async () => [] });
+            const loader = new RelationshipLoader(client as any);
+            const artifact = new ArtifactModel({
+                _ref: '/artifact/1',
+                _type: 'artifact',
+                Tags: { _tagsNameArray: [] }
+            });
+
+            await loader.loadRelationships(artifact, ['Tags'], {
+                artifact: ArtifactModel
+            });
+
+            // Empty _tagsNameArray → falls through to _ref check → null _ref → empty array set
+            expect(artifact._data.Tags).to.deep.equal([]);
+        });
+
+        it('should skip entities without a _type in _groupEntitiesByType', async () => {
+            class Story extends RallyEntity {
+                static entityType = 'hierarchicalrequirement';
+                static relations = {
+                    Owner: { type: 'belongsTo', entity: 'user' }
+                };
+            }
+            const client = createMockClient({
+                getByRef: async () => ({ _ref: '/user/1', Name: 'Alice' })
+            });
+            const loader = new RelationshipLoader(client as any);
+            // Entity without _type should be skipped gracefully
+            const story = new Story({
+                _ref: '/hierarchicalrequirement/1',
+                Owner: { _ref: '/user/1' }
+            });
+            (story as any)._data._type = undefined;
+
+            // Should not throw even though entity has no type
+            await loader.loadRelationships(story, ['Owner'], {
+                hierarchicalrequirement: Story
+            });
+        });
+
+        it('should return undefined from _getCacheEntry on cache miss', () => {
+            const loader = new RelationshipLoader(createMockClient() as any);
+            const result = (loader as any)._getCacheEntry('/nonexistent/999');
+            expect(result).to.equal(undefined);
+        });
+
+        it('should promote an accessed cache entry to MRU and evict LRU on overflow', () => {
+            const loader = new RelationshipLoader(createMockClient() as any, { maxCacheEntries: 3 });
+            (loader as any)._setCacheEntry('/entity/1', { ObjectID: 1 });
+            (loader as any)._setCacheEntry('/entity/2', { ObjectID: 2 });
+            (loader as any)._setCacheEntry('/entity/3', { ObjectID: 3 });
+
+            // Promote /entity/1 to MRU by accessing it
+            (loader as any)._getCacheEntry('/entity/1');
+
+            // Add a 4th entry — should evict /entity/2 (now LRU), not /entity/1
+            (loader as any)._setCacheEntry('/entity/4', { ObjectID: 4 });
+
+            const cache: Map<string, unknown> = (loader as any).cache;
+            expect(cache.has('/entity/1')).to.equal(true);
+            expect(cache.has('/entity/2')).to.equal(false);
+            expect(cache.has('/entity/3')).to.equal(true);
+            expect(cache.has('/entity/4')).to.equal(true);
+        });
+
+        it('should set empty array for a collection field whose _ref is null', async () => {
+            class ArtifactModel extends RallyEntity {
+                static entityType = 'artifact';
+                static relations = {
+                    Attachments: { type: 'hasMany', entity: 'attachment', foreignKey: 'Attachments', isCollection: true }
+                };
+            }
+            const client = createMockClient({ queryAll: async () => [] });
+            const loader = new RelationshipLoader(client as any);
+            const artifact = new ArtifactModel({
+                _ref: '/artifact/1',
+                _type: 'artifact',
+                Attachments: { _ref: null, Count: 0 }
+            });
+
+            await loader.loadRelationships(artifact, ['Attachments'], {
+                artifact: ArtifactModel
+            });
+
+            // Collection field with null _ref → empty array set
+            expect(Array.isArray(artifact._data.Attachments)).to.equal(true);
+            expect((artifact._data.Attachments as unknown[]).length).to.equal(0);
+        });
+
+        it('should leave belongsTo value unchanged when fetched ref does not match entity ref', async () => {
+            class Story extends RallyEntity {
+                static entityType = 'hierarchicalrequirement';
+                static relations = {
+                    Owner: { type: 'belongsTo', entity: 'user', foreignKey: 'Owner' }
+                };
+            }
+            // queryAll returns a ref that does NOT match what the entity's foreign key holds
+            const client = createMockClient({
+                queryAll: async () => [{ _ref: '/user/999', Name: 'Wrong User' }]
+            });
+            const loader = new RelationshipLoader(client as any);
+            const story = new Story({
+                _ref: '/hierarchicalrequirement/1',
+                _type: 'hierarchicalrequirement',
+                Owner: { _ref: '/user/1' }  // Looking for user/1 but loader will get user/999
+            });
+
+            await loader.loadRelationships(story, ['Owner'], {
+                hierarchicalrequirement: Story
+            });
+
+            // When returned ref (/user/999) doesn't match the foreign key (/user/1),
+            // the entity map lookup fails and the field is left as-is (original ref object)
+            const owner = story._data.Owner as { _ref: string };
+            expect(owner).to.not.be.undefined;
+            expect(owner._ref).to.equal('/user/1');
+        });
+    });});

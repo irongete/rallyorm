@@ -64,7 +64,7 @@
   },
   "homepage": "https://github.com/irongete/rallyorm#readme",
   "dependencies": {
-    "p-queue": "^6.6.2",
+    "p-queue": "^8.0.1",
     "p-retry": "^4.6.2"
   },
   "devDependencies": {

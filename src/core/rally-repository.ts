@@ -451,10 +451,15 @@ export class RallyRepository<T extends RallyEntity = any> {
                 }
                 case '$in':
                     if (Array.isArray(operatorValue) && operatorValue.length > 0) {
-                        const inConditions = operatorValue
-                            .map(v => this._buildEqualityCondition(field, v))
-                            .filter(Boolean);
-                        conditions.push(`(${inConditions.join(' OR ')})`);
+                        const validItems = operatorValue.filter(v => v !== null && v !== undefined);
+                        if (validItems.length > 0) {
+                            const inConditions = validItems
+                                .map(v => this._buildEqualityCondition(field, v))
+                                .filter(Boolean);
+                            if (inConditions.length > 0) {
+                                conditions.push(`(${inConditions.join(' OR ')})`);
+                            }
+                        }
                     }
                     break;
                 default:

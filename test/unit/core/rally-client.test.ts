@@ -1190,4 +1190,136 @@ describe('RallyClient', function () {
             await expectAsyncError(() => client.queryCollectionAll(null as any), /collection ref/i);
         });
     });
+
+    describe('3.3 Branch Coverage', () => {
+        it('should retry and succeed after a logical concurrency conflict in OperationResult', async () => {
+            let callCount = 0;
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                allowCreate: true,
+                concurrencyRetries: 1,
+                retryDelayMs: 10,
+                fetch: async () => {
+                    callCount += 1;
+                    const body = callCount === 1
+                        ? { CreateResult: { Errors: ['Concurrency conflict detected'], Warnings: [] } }
+                        : { CreateResult: { Object: { ObjectID: 99, Name: 'Retry' }, Errors: [], Warnings: [] } };
+                    return {
+                        ok: true, status: 200, statusText: 'OK',
+                        headers: { get: () => null, getSetCookie: () => [] },
+                        text: async () => JSON.stringify(body)
+                    } as unknown as Response;
+                }
+            });
+
+            const result = await client.create<{ ObjectID: number }>('defect', { Name: 'Test' });
+            expect(result.ObjectID).to.equal(99);
+            expect(callCount).to.equal(2);
+        });
+
+        it('should throw RallyNetworkError when fetch throws with "fetch" in the error message', async () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                retries: 0,
+                fetch: async () => { throw new Error('Failed to fetch: ECONNREFUSED'); }
+            });
+
+            try {
+                await client.query('defect');
+                expect.fail('Expected to throw');
+            } catch (error: any) {
+                expect(error.code).to.equal('NETWORK_ERROR');
+                expect(error.message).to.include('fetch');
+            }
+        });
+
+        it('should extract entity from response when entity key matches via lastEntitySegment for slash types', () => {
+            const client = new RallyClient({ apiKey: 'test-key', fetch: createMockFetch({}) });
+            // For a type 'portfolioitem/feature', key 'feature' is the lastEntitySegment
+            const response = { feature: { ObjectID: 55, Name: 'Feature55' } };
+            const entity = (client as any)._extractEntityFromResponse(response, 'portfolioitem/feature') as Record<string, unknown>;
+            expect(entity.ObjectID).to.equal(55);
+        });
+
+        it('should resolve success=false when success flag is explicitly false in OperationResult', () => {
+            const client = new RallyClient({ apiKey: 'test-key', fetch: createMockFetch({}) });
+            const result = (client as any)._resolveOperationSuccess(
+                'update', 'defect', {}, { Success: false }, null
+            );
+            expect(result).to.equal(false);
+        });
+
+        it('should resolve success=true when success flag is explicitly true in OperationResult', () => {
+            const client = new RallyClient({ apiKey: 'test-key', fetch: createMockFetch({}) });
+            const result = (client as any)._resolveOperationSuccess(
+                'update', 'defect', {}, { Success: true }, null
+            );
+            expect(result).to.equal(true);
+        });
+
+        it('should enable all write ops when RALLY_ALLOW_WRITE env var is set', async () => {
+            await withEnv({
+                RALLY_ALLOW_WRITE: 'true',
+                RALLY_READ_ONLY: undefined,
+                RALLY_ALLOW_CREATE: undefined,
+                RALLY_ALLOW_UPDATE: undefined,
+                RALLY_ALLOW_DELETE: undefined
+            }, () => {
+                const client = new RallyClient({ apiKey: 'test-key', fetch: createMockFetch({}) });
+                const perms = client.getWritePermissions();
+
+                expect(perms.allowCreate).to.equal(true);
+                expect(perms.allowUpdate).to.equal(true);
+                expect(perms.allowDelete).to.equal(true);
+            });
+        });
+
+        it('should throw RallyValidationError when setLogger receives a non-IRallyLogger', () => {
+            const client = new RallyClient({ apiKey: 'test-key', fetch: createMockFetch({}) });
+            expect(() => client.setLogger(null as any)).to.throw(/logger must implement IRallyLogger/);
+            expect(() => client.setLogger({ debug: () => {}, warn: () => {} } as any)).to.throw(/logger must implement IRallyLogger/);
+        });
+
+        it('should replace the fetch function via setFetch and use it for subsequent requests', async () => {
+            const client = new RallyClient({ apiKey: 'test-key', fetch: createMockFetch({}) });
+
+            const results: unknown[] = [];
+            client.setFetch(async () => ({
+                ok: true, status: 200, statusText: 'OK',
+                headers: { get: () => null, getSetCookie: () => [] },
+                text: async () => JSON.stringify({ QueryResult: { Results: [{ ObjectID: 777 }], TotalResultCount: 1 } })
+            } as unknown as Response));
+
+            const data = await client.query('defect');
+            results.push(...data);
+
+            expect(results).to.have.length(1);
+            expect((results[0] as any).ObjectID).to.equal(777);
+        });
+
+        it('should throw RallyValidationError when setFetch receives a non-function', () => {
+            const client = new RallyClient({ apiKey: 'test-key', fetch: createMockFetch({}) });
+            expect(() => client.setFetch(null as any)).to.throw(/fetch must be a function/);
+            expect(() => (client as any).fetch = 42).to.throw(/fetch must be a function/);
+        });
+
+        it('should return true from _isConcurrencyConflict when errors contain a concurrency pattern', () => {
+            const client = new RallyClient({ apiKey: 'test-key', fetch: createMockFetch({}) });
+            expect((client as any)._isConcurrencyConflict(['Concurrency conflict detected'])).to.equal(true);
+            expect((client as any)._isConcurrencyConflict(['Modified since read'])).to.equal(true);
+            expect((client as any)._isConcurrencyConflict(['Unrelated error'])).to.equal(false);
+        });
+
+        it('should return correct cookie pair from _getCookiePair with semicolon-delimited Set-Cookie value', () => {
+            const client = new RallyClient({ apiKey: 'test-key', fetch: createMockFetch({}) });
+            const pair = (client as any)._getCookiePair('JSESSIONID=abc123; Path=/; HttpOnly');
+            expect(pair).to.equal('JSESSIONID=abc123');
+        });
+
+        it('should return the full string from _getCookiePair when there is no semicolon', () => {
+            const client = new RallyClient({ apiKey: 'test-key', fetch: createMockFetch({}) });
+            const pair = (client as any)._getCookiePair('JSESSIONID=noseми');
+            expect(pair).to.equal('JSESSIONID=noseми');
+        });
+    });
 });

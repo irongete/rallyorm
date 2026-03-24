@@ -22,12 +22,9 @@ import { toAbsoluteRef, toRelativeRef } from './ref-utils.js';
 
 export interface IQueueOptions {
     concurrency?: number;
-    interval?: number;
-    intervalCap?: number;
     timeout?: number;
     throwOnTimeout?: boolean;
     autoStart?: boolean;
-    carryoverConcurrencyCount?: boolean;
 }
 
 export interface IRelationshipLoaderOptions {
@@ -123,13 +120,16 @@ interface IRallyOperationResult {
 }
 
 const PACKAGE_VERSION_CANDIDATE_PATHS = (() => {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = dirname(__filename);
-
-    return [
-        join(__dirname, '..', '..', 'package.json'),
-        join(__dirname, '..', '..', '..', 'package.json')
-    ];
+    try {
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = dirname(__filename);
+        return [
+            join(__dirname, '..', '..', 'package.json'),
+            join(__dirname, '..', '..', '..', 'package.json')
+        ];
+    } catch {
+        return [] as string[];
+    }
 })();
 
 let cachedPackageVersion: string | null = null;
@@ -158,9 +158,9 @@ export class RallyClient {
     readonly allowUpdate: boolean;
     readonly allowDelete: boolean;
     private queue!: IPQueueInstance;
-    logger!: IRallyLogger;
+    private _logger!: IRallyLogger;
+    private _fetch!: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
     private readonly defaultHeaders: Record<string, string>;
-    fetch!: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
     private _jsessionCookie: string | null;
     private _concurrencyRetries: number;
     private readonly _clientOptions: IRallyClientConfig;
@@ -181,7 +181,7 @@ export class RallyClient {
         this.retryDelayMs = cfg.retryDelayMs;
         this.authMode = cfg.authMode;
         this.debug = cfg.debug;
-        this.fetch = cfg.fetch;
+        this._fetch = cfg.fetch;
         this._jsessionCookie = null;
         const rawConcurrencyRetries = options.concurrencyRetries !== undefined
             ? options.concurrencyRetries
@@ -189,7 +189,7 @@ export class RallyClient {
         this._concurrencyRetries = Math.max(0, rawConcurrencyRetries);
 
         this.logLevel = this._resolveLogLevel(options);
-        this.logger = options.logger ?? this._buildLogger(this.logLevel);
+        this._logger = options.logger ?? this._buildLogger(this.logLevel);
 
         const perms = this._buildPermissions(options, this.logger);
         this.readOnly = perms.readOnly;
@@ -197,8 +197,7 @@ export class RallyClient {
         this.allowUpdate = perms.allowUpdate;
         this.allowDelete = perms.allowDelete;
 
-        const PQueueClass = (PQueue as any).default || PQueue;
-        this.queue = new PQueueClass(this._buildQueueOptions(options)) as IPQueueInstance;
+        this.queue = new (PQueue as any)(this._buildQueueOptions(options)) as IPQueueInstance;
 
         this.defaultHeaders = this._buildHeaders(options);
     }
@@ -264,11 +263,52 @@ export class RallyClient {
         };
     }
 
+    /** Public getter for the active logger. */
+    get logger(): IRallyLogger {
+        return this._logger;
+    }
+
+    /**
+     * Replaces the active logger. Throws `RallyValidationError` if the provided value
+     * does not implement the `IRallyLogger` interface.
+     */
+    set logger(value: IRallyLogger) {
+        if (!value || typeof value.debug !== 'function' || typeof value.warn !== 'function' || typeof value.error !== 'function') {
+            throw new RallyValidationError('RallyClient: logger must implement IRallyLogger (debug, info, warn, error methods)');
+        }
+        this._logger = value;
+    }
+
+    /** Public getter for the active fetch function. */
+    get fetch(): (input: RequestInfo | URL, init?: RequestInit) => Promise<Response> {
+        return this._fetch;
+    }
+
+    /**
+     * Replaces the active fetch function. Throws `RallyValidationError` if the provided
+     * value is not a function.
+     */
+    set fetch(value: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) {
+        if (typeof value !== 'function') {
+            throw new RallyValidationError('RallyClient: fetch must be a function');
+        }
+        this._fetch = value;
+    }
+
     /**
      * Replace the active logger at runtime.
+     * Throws `RallyValidationError` if the provided value does not implement `IRallyLogger`.
      */
     setLogger(logger: IRallyLogger): void {
         this.logger = logger;
+    }
+
+    /**
+     * Replace the active fetch function at runtime (e.g. for testing or custom implementations).
+     * Throws `RallyValidationError` if the provided value is not a function.
+     */
+    setFetch(fetchFn: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>): void {
+        this.fetch = fetchFn;
     }
 
     /**
@@ -1175,7 +1215,7 @@ export class RallyClient {
     /**
      * Build PQueue options from config
      */
-    private _buildQueueOptions(options: IRallyClientConfig): IQueueOptions {
+    private _buildQueueOptions(options: IRallyClientConfig): Record<string, unknown> {
         const { queueOptions = {} } = options;
         const envConcurrency = process.env.RALLY_MAX_CONCURRENT_REQUESTS;
         const resolvedConcurrency = queueOptions.concurrency ?? (
@@ -1184,12 +1224,12 @@ export class RallyClient {
                 : this._normalizeIntegerOption(envConcurrency, 'RALLY_MAX_CONCURRENT_REQUESTS', 1)
         );
 
-        return {
-            concurrency: resolvedConcurrency,
-            interval: 1000,
-            intervalCap: 100,
-            ...queueOptions
-        };
+        // Only pass options supported by p-queue v8+.
+        const supported: Record<string, unknown> = { concurrency: resolvedConcurrency };
+        if (queueOptions.timeout !== undefined) supported.timeout = queueOptions.timeout;
+        if (queueOptions.throwOnTimeout !== undefined) supported.throwOnTimeout = queueOptions.throwOnTimeout;
+        if (queueOptions.autoStart !== undefined) supported.autoStart = queueOptions.autoStart;
+        return supported;
     }
 
     /**

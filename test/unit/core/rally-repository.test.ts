@@ -829,4 +829,130 @@ describe('RallyRepository', function () {
             expect(repo._buildQuery(false)).to.equal('');
         });
     });
+
+    describe('3.2 Tags Partial Creation', () => {
+        it('should throw after creating some tags successfully when a later tag creation fails', async () => {
+            const createdTagNames: string[] = [];
+            const client = createMockClient({
+                query: async () => [],
+                create: async (type: string, data: any) => {
+                    if (type === 'tag') {
+                        if (data.Name === 'TagC') {
+                            throw new Error('Tag service unavailable for TagC');
+                        }
+                        createdTagNames.push(data.Name);
+                        return { _ref: `/tag/${createdTagNames.length}`, Name: data.Name };
+                    }
+                    return { ObjectID: '123', ...data };
+                }
+            });
+            const repo = new RallyRepository('defect', client);
+
+            try {
+                await repo.save({ Name: 'Defect', Tags: ['TagA', 'TagB', 'TagC'] });
+                expect.fail('Expected throw');
+            } catch (error: any) {
+                // TagA and TagB were already created in Rally before TagC failed
+                expect(createdTagNames).to.deep.equal(['TagA', 'TagB']);
+                expect(String(error.message)).to.include('TagC');
+            }
+        });
+    });
+
+    describe('3.3 Branch Coverage', () => {
+        it('should hydrate array values in relation cache when hydrateRelationValue receives an array', async () => {
+            class TaskModel extends RallyEntity {
+                static entityType = 'task';
+                static relations = {};
+            }
+            class StoryModel extends RallyEntity {
+                static entityType = 'hierarchicalrequirement';
+                static relations = {
+                    Children: { type: 'hasMany', entity: 'hierarchicalrequirement', foreignKey: 'Children' }
+                };
+            }
+
+            const client = createMockClient({
+                get: async () => ({
+                    ObjectID: 1,
+                    Children: [
+                        { _ref: '/task/10', _type: 'task', ObjectID: 10, Name: 'Child A' },
+                        { _ref: '/task/11', _type: 'task', ObjectID: 11, Name: 'Child B' }
+                    ]
+                })
+            });
+            const repo = new RallyRepository('hierarchicalrequirement', client, StoryModel, { task: TaskModel }) as any;
+
+            // _hydrateRelationValue with an array value
+            const result = repo._hydrateRelationValue(
+                [{ _ref: '/task/10', Name: 'T1' }, { _ref: '/task/11', Name: 'T2' }],
+                'task',
+                {}
+            );
+
+            expect(Array.isArray(result)).to.equal(true);
+            expect(result).to.have.length(2);
+        });
+
+        it('should return raw value from _hydrateRelationValue for a scalar non-object', () => {
+            const repo = new RallyRepository('defect', createMockClient(), RallyEntity) as any;
+            expect(repo._hydrateRelationValue('some-string', 'user', {})).to.equal('some-string');
+            expect(repo._hydrateRelationValue(42, 'user', {})).to.equal(42);
+        });
+
+        it('should return raw value from _wrapRelatedEntity when related type is not in registry', () => {
+            const repo = new RallyRepository('defect', createMockClient(), RallyEntity, {}) as any;
+            const raw = { _ref: '/unknowntype/1', Name: 'Raw' };
+            const result = repo._wrapRelatedEntity(raw, 'unknowntype');
+            // No model registered, raw object is returned as-is
+            expect(result).to.equal(raw);
+        });
+
+        it('should normalize Tags with lowercase name property to a ref object during save', async () => {
+            let sentData: any;
+            const client = createMockClient({
+                query: async () => [],
+                create: async (type: string, data: any) => {
+                    if (type === 'tag') {
+                        return { _ref: `/tag/99`, Name: data.Name };
+                    }
+                    sentData = data;
+                    return { ObjectID: '123', ...data };
+                }
+            });
+            const repo = new RallyRepository('defect', client);
+
+            await repo.save({
+                Name: 'Test',
+                Tags: [{ name: 'LowercaseName' }] // lowercase .name prop
+            });
+
+            // The tag should have been looked up by name 'LowercaseName' and resolved to a ref
+            expect(sentData.Tags).to.deep.equal([{ _ref: '/tag/99' }]);
+        });
+
+        it('should skip undefined items in _normalizeArrayItem', async () => {
+            const repo = new RallyRepository('defect', createMockClient()) as any;
+            const result = await repo._normalizeArrayItem(undefined);
+            expect(result).to.equal(undefined);
+        });
+
+        it('should normalize a nested array inside _normalizeArrayItem', async () => {
+            const repo = new RallyRepository('defect', createMockClient()) as any;
+            // An array inside an array: each element should be normalized
+            const result = await repo._normalizeArrayItem([{ _ref: '/user/1' }, { _ref: '/user/2' }]);
+            expect(Array.isArray(result)).to.equal(true);
+            expect(result).to.have.length(2);
+        });
+
+        it('should return empty string from _buildFieldCondition when $in operand has only null/undefined items', () => {
+            const repo = new RallyRepository('defect', createMockClient()) as any;
+            expect(repo._buildFieldCondition('State', { $in: [null, undefined] })).to.equal('');
+        });
+
+        it('should return empty string from _buildFieldCondition when array value has only null items', () => {
+            const repo = new RallyRepository('defect', createMockClient()) as any;
+            expect(repo._buildFieldCondition('State', [null, undefined])).to.equal('');
+        });
+    });
 });

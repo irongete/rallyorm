@@ -448,6 +448,76 @@ describe('RallyRepository', function () {
             ]);
         });
 
+        it('should recover when tag creation loses a race and the tag exists on re-read', async () => {
+            let entityPayload: any;
+            let tagLookupCount = 0;
+
+            const client = createMockClient({
+                query: async (_type: string, options: { query?: string }) => {
+                    if (!options.query?.includes('RaceTag')) {
+                        return [];
+                    }
+
+                    tagLookupCount += 1;
+                    return tagLookupCount === 1
+                        ? []
+                        : [{ _ref: '/tag/88', Name: 'RaceTag' }];
+                },
+                create: async (type: string, data: any) => {
+                    if (type === 'tag') {
+                        throw new Error(`Duplicate tag ${data.Name}`);
+                    }
+
+                    entityPayload = data;
+                    return { ObjectID: '123', ...data };
+                }
+            });
+            const repo = new RallyRepository('defect', client);
+
+            await repo.save({
+                Name: 'Defect with racing tag',
+                Tags: ['RaceTag']
+            });
+
+            expect(tagLookupCount).to.equal(2);
+            expect(entityPayload.Tags).to.deep.equal([{ _ref: '/tag/88' }]);
+        });
+
+        it('should recover when tag creation returns without _ref but the tag can be re-read', async () => {
+            let entityPayload: any;
+            let tagLookupCount = 0;
+
+            const client = createMockClient({
+                query: async (_type: string, options: { query?: string }) => {
+                    if (!options.query?.includes('EventuallyConsistentTag')) {
+                        return [];
+                    }
+
+                    tagLookupCount += 1;
+                    return tagLookupCount === 1
+                        ? []
+                        : [{ _ref: '/tag/99', Name: 'EventuallyConsistentTag' }];
+                },
+                create: async (type: string, data: any) => {
+                    if (type === 'tag') {
+                        return { Name: data.Name };
+                    }
+
+                    entityPayload = data;
+                    return { ObjectID: '123', ...data };
+                }
+            });
+            const repo = new RallyRepository('defect', client);
+
+            await repo.save({
+                Name: 'Defect with eventually consistent tag',
+                Tags: ['EventuallyConsistentTag']
+            });
+
+            expect(tagLookupCount).to.equal(2);
+            expect(entityPayload.Tags).to.deep.equal([{ _ref: '/tag/99' }]);
+        });
+
         it('should pass normalized fetch to get and eager-load includes in findOne by id', async () => {
             const includeCalls: string[][] = [];
             const client = createMockClient({

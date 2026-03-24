@@ -29,6 +29,26 @@ async function withEnv<T>(values: Record<string, string | undefined>, callback: 
     }
 }
 
+async function withGlobalFetch<T>(value: typeof globalThis.fetch | undefined, callback: () => Promise<T> | T): Promise<T> {
+    const originalFetch = globalThis.fetch;
+
+    try {
+        Object.defineProperty(globalThis, 'fetch', {
+            configurable: true,
+            writable: true,
+            value
+        });
+
+        return await callback();
+    } finally {
+        Object.defineProperty(globalThis, 'fetch', {
+            configurable: true,
+            writable: true,
+            value: originalFetch
+        });
+    }
+}
+
 async function expectAsyncError(fn: () => Promise<unknown>, pattern: RegExp): Promise<void> {
     try {
         await fn();
@@ -89,6 +109,25 @@ describe('RallyClient', function () {
                 apiKey: 'test-key',
                 authMode: 'invalid' as any
             })).to.throw('authMode');
+        });
+
+        it('should fail fast when no fetch implementation is available', async () => {
+            await withGlobalFetch(undefined, () => {
+                expect(() => new RallyClient({
+                    apiKey: 'test-key'
+                })).to.throw('fetch is not available in this runtime');
+            });
+        });
+
+        it('should still accept an explicit fetch implementation when global fetch is unavailable', async () => {
+            await withGlobalFetch(undefined, () => {
+                const client = new RallyClient({
+                    apiKey: 'test-key',
+                    fetch: createMockFetch({})
+                });
+
+                expect(client).to.be.instanceOf(RallyClient);
+            });
         });
 
         it('should set a User-Agent header with the package version', () => {
@@ -837,6 +876,21 @@ describe('RallyClient', function () {
             expect(messages).to.include('error:hello from error');
         });
 
+        it('should reject loggers that do not implement info()', () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                fetch: createMockFetch({})
+            });
+
+            expect(() => {
+                client.setLogger({
+                    debug: () => {},
+                    warn: () => {},
+                    error: () => {}
+                } as any);
+            }).to.throw('logger must implement IRallyLogger');
+        });
+
         it('should rebuild the built-in console logger via setLogLevel', () => {
             const client = new RallyClient({
                 apiKey: 'test-key',
@@ -849,6 +903,26 @@ describe('RallyClient', function () {
             client.setLogLevel('warn');
             // The logger instance is replaced, not the same reference
             expect(client.logger).to.not.equal(originalLogger);
+        });
+
+        it('should not replace a custom logger when setLogLevel is called', () => {
+            const customLogger = {
+                debug: () => {},
+                info: () => {},
+                warn: () => {},
+                error: () => {}
+            };
+
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                logLevel: 'silent',
+                logger: customLogger,
+                fetch: createMockFetch({})
+            });
+
+            client.setLogLevel('debug');
+
+            expect(client.logger).to.equal(customLogger);
         });
 
         it('should retry and succeed after a 409 conflict response', async () => {

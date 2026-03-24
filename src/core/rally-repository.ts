@@ -911,22 +911,15 @@ export class RallyRepository<T extends RallyEntity = any> {
         }
 
         for (const tagName of missingTagNames) {
-            let tag: IRallyTagData;
             try {
-                tag = await this._createTag(tagName);
+                const tag = await this._resolveMissingTag(tagName);
+                resolvedTags.set(tagName, tag);
             } catch (error: any) {
                 throw new RallyOperationError(
                     `Failed to resolve or create Rally tags for ${this.entityType}: ${tagName}`,
                     [error.message ?? `Could not create tag: ${tagName}`]
                 );
             }
-            if (!tag?._ref) {
-                throw new RallyOperationError(
-                    `Failed to resolve or create Rally tags for ${this.entityType}: ${tagName}`,
-                    [`Could not create tag: ${tagName}`]
-                );
-            }
-            resolvedTags.set(tagName, tag);
         }
 
         const tagReferences = validTagNames
@@ -935,6 +928,33 @@ export class RallyRepository<T extends RallyEntity = any> {
 
         this.client.logger?.debug(`[${this.entityType}] Processed ${tagReferences.length} tag references`);
         return tagReferences;
+    }
+
+    private async _resolveMissingTag(tagName: string): Promise<IRallyTagData> {
+        try {
+            const createdTag = await this._createTag(tagName);
+            if (createdTag?._ref) {
+                return createdTag;
+            }
+
+            this.client.logger?.warn(
+                `[${this.entityType}] Tag create for "${tagName}" returned no _ref; re-checking Rally before failing`
+            );
+        } catch (error: any) {
+            this.client.logger?.warn(
+                `[${this.entityType}] Tag create for "${tagName}" failed; re-checking Rally in case it was created concurrently: ${error.message ?? error}`
+            );
+        }
+
+        const existingTag = await this._findTagByName(tagName);
+        if (existingTag?._ref) {
+            return existingTag;
+        }
+
+        throw new RallyOperationError(
+            `Failed to resolve or create Rally tags for ${this.entityType}: ${tagName}`,
+            [`Could not create tag: ${tagName}`]
+        );
     }
 
     private async _findTagsByNames(tagNames: string[]): Promise<IRallyTagData[]> {
@@ -950,6 +970,11 @@ export class RallyRepository<T extends RallyEntity = any> {
             fetch: 'ObjectID,Name',
             pagesize: Math.min(tagNames.length + 10, 2000)
         });
+    }
+
+    private async _findTagByName(tagName: string): Promise<IRallyTagData | null> {
+        const matches = await this._findTagsByNames([tagName]);
+        return matches.find(tag => tag?.Name === tagName) ?? null;
     }
 
     private async _createTag(tagName: string): Promise<IRallyTagData> {

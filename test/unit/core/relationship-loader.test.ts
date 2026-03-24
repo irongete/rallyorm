@@ -31,6 +31,41 @@ async function withEnv<T>(values: Record<string, string | undefined>, callback: 
 }
 
 describe('RelationshipLoader', () => {
+    it('should return the original entity unchanged when includes are omitted', async () => {
+        const loader = new RelationshipLoader(createMockClient() as any);
+        const entity = { _ref: '/defect/1', _type: 'defect' };
+
+        const result = await loader.loadRelationships(entity);
+
+        expect(result).to.equal(entity);
+    });
+
+    it('should return the original array unchanged when there are no entities to load', async () => {
+        const loader = new RelationshipLoader(createMockClient() as any);
+        const entities: any[] = [];
+
+        const result = await loader.loadRelationships(entities, ['Owner']);
+
+        expect(result).to.equal(entities);
+    });
+
+    it('should warn and skip include paths deeper than the configured parser limit', async () => {
+        const warnings: string[] = [];
+        const loader = new RelationshipLoader(createMockClient({
+            logger: {
+                debug: () => {},
+                info: () => {},
+                warn: (message: string) => { warnings.push(message); },
+                error: () => {}
+            }
+        }) as any);
+
+        const parsed = (loader as any)._parseIncludePaths(['a.b.c.d.e.f.g.h.i.j.k']);
+
+        expect(parsed).to.deep.equal({});
+        expect(warnings.some(message => message.includes('exceeds maximum depth'))).to.equal(true);
+    });
+
     it('should load nested belongsTo relationships for slash-delimited entity types', async () => {
         class Story extends RallyEntity {
             static entityType = 'hierarchicalrequirement';
@@ -308,6 +343,57 @@ describe('RelationshipLoader', () => {
 
         expect(artifact._data.Tags).to.have.length(1);
         expect(artifact._data.Tags[0]).to.include({ _ref: '/tag/1', Name: 'Backend' });
+    });
+
+    it('should set an empty array when a collection relationship field is missing', async () => {
+        class ProjectModel extends RallyEntity {
+            static entityType = 'project';
+            static relations = {
+                TeamMembers: { type: 'hasMany', entity: 'user', foreignKey: 'TeamMemberships', isCollection: true }
+            };
+        }
+
+        const loader = new RelationshipLoader(createMockClient() as any);
+        const project = new ProjectModel({
+            _ref: '/project/1',
+            _type: 'project'
+        });
+
+        await loader.loadRelationships(project, ['TeamMembers'], {
+            project: ProjectModel,
+            user: RallyEntity
+        });
+
+        expect(project._data.TeamMembers).to.deep.equal([]);
+    });
+
+    it('should warn and skip inverse relationships missing entity metadata', async () => {
+        class Story extends RallyEntity {
+            static entityType = 'hierarchicalrequirement';
+            static relations = {
+                Tasks: { type: 'hasMany', foreignKey: 'WorkProduct', inverseRef: true }
+            };
+        }
+
+        const warnings: string[] = [];
+        const loader = new RelationshipLoader(createMockClient({
+            logger: {
+                debug: () => {},
+                info: () => {},
+                warn: (message: string) => { warnings.push(message); },
+                error: () => {}
+            }
+        }) as any);
+        const story = new Story({
+            _ref: '/hierarchicalrequirement/1',
+            _type: 'hierarchicalrequirement'
+        });
+
+        await loader.loadRelationships(story, ['Tasks'], {
+            hierarchicalrequirement: Story
+        });
+
+        expect(warnings.some(message => message.includes('missing foreignKey or entity'))).to.equal(true);
     });
 
     it('should load independent collection relationships in parallel', async () => {

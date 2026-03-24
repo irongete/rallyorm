@@ -134,11 +134,6 @@ const PACKAGE_VERSION_CANDIDATE_PATHS = (() => {
 
 let cachedPackageVersion: string | null = null;
 
-interface IPQueueInstance {
-    add<T>(fn: () => Promise<T>): Promise<T>;
-    readonly concurrency: number;
-}
-
 /**
  * Rally API Client with repository pattern interface
  * Provides robust HTTP client with retry logic, rate limiting, and error handling
@@ -157,8 +152,9 @@ export class RallyClient {
     readonly allowCreate: boolean;
     readonly allowUpdate: boolean;
     readonly allowDelete: boolean;
-    private queue!: IPQueueInstance;
+    private queue!: PQueue;
     private _logger!: IRallyLogger;
+    private _usesBuiltInLogger!: boolean;
     private _fetch!: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
     private readonly defaultHeaders: Record<string, string>;
     private _jsessionCookie: string | null;
@@ -189,7 +185,11 @@ export class RallyClient {
         this._concurrencyRetries = Math.max(0, rawConcurrencyRetries);
 
         this.logLevel = this._resolveLogLevel(options);
-        this._logger = options.logger ?? this._buildLogger(this.logLevel);
+        if (options.logger) {
+            this.logger = options.logger;
+        } else {
+            this._setBuiltInLogger(this._buildLogger(this.logLevel));
+        }
 
         const perms = this._buildPermissions(options, this.logger);
         this.readOnly = perms.readOnly;
@@ -197,7 +197,7 @@ export class RallyClient {
         this.allowUpdate = perms.allowUpdate;
         this.allowDelete = perms.allowDelete;
 
-        this.queue = new (PQueue as any)(this._buildQueueOptions(options)) as IPQueueInstance;
+        this.queue = new PQueue(this._buildQueueOptions(options));
 
         this.defaultHeaders = this._buildHeaders(options);
     }
@@ -273,10 +273,11 @@ export class RallyClient {
      * does not implement the `IRallyLogger` interface.
      */
     set logger(value: IRallyLogger) {
-        if (!value || typeof value.debug !== 'function' || typeof value.warn !== 'function' || typeof value.error !== 'function') {
+        if (!value || typeof value.debug !== 'function' || typeof value.info !== 'function' || typeof value.warn !== 'function' || typeof value.error !== 'function') {
             throw new RallyValidationError('RallyClient: logger must implement IRallyLogger (debug, info, warn, error methods)');
         }
         this._logger = value;
+        this._usesBuiltInLogger = false;
     }
 
     /** Public getter for the active fetch function. */
@@ -317,7 +318,14 @@ export class RallyClient {
      */
     setLogLevel(level: 'silent' | 'error' | 'warn' | 'info' | 'debug'): void {
         this.logLevel = level;
-        this.logger = this._buildLogger(level);
+        if (this._usesBuiltInLogger) {
+            this._setBuiltInLogger(this._buildLogger(level));
+        }
+    }
+
+    private _setBuiltInLogger(logger: IRallyLogger): void {
+        this._logger = logger;
+        this._usesBuiltInLogger = true;
     }
 
     /**
@@ -374,7 +382,7 @@ export class RallyClient {
      * Execute request with retry logic and queue management
      */
     private async _requestWithRetry(taskFn: () => Promise<IRallyRawResponse>, meta: IFetchMeta = {}): Promise<IRallyRawResponse> {
-        return this.queue.add(() =>
+        const result = await this.queue.add<IRallyRawResponse>(() =>
             pRetry(taskFn, {
                 retries: this.retries,
                 factor: 2,
@@ -389,6 +397,12 @@ export class RallyClient {
                 }
             })
         );
+
+        if (result === undefined) {
+            throw new RallyTimeoutError(`Queue timeout while executing ${meta.op || 'request'}`);
+        }
+
+        return result;
     }
 
     /**
@@ -1101,6 +1115,11 @@ export class RallyClient {
             fetch: customFetch
         } = options;
 
+        const resolvedFetch = customFetch ?? globalThis.fetch?.bind(globalThis);
+        if (typeof resolvedFetch !== 'function') {
+            throw new RallyValidationError('RallyClient: fetch is not available in this runtime. Provide a fetch implementation in IRallyClientConfig.fetch or use Node.js >= 18 with fetch enabled');
+        }
+
         return {
             apiKey,
             workspace: workspace || undefined,
@@ -1110,7 +1129,7 @@ export class RallyClient {
             retryDelayMs: Math.max(100, retryDelayMs),
             authMode,
             debug: Boolean(debug),
-            fetch: customFetch || ((global as any).fetch ? (global as any).fetch.bind(global) : undefined)
+            fetch: resolvedFetch
         };
     }
 
@@ -1215,7 +1234,7 @@ export class RallyClient {
     /**
      * Build PQueue options from config
      */
-    private _buildQueueOptions(options: IRallyClientConfig): Record<string, unknown> {
+    private _buildQueueOptions(options: IRallyClientConfig): ConstructorParameters<typeof PQueue>[0] {
         const { queueOptions = {} } = options;
         const envConcurrency = process.env.RALLY_MAX_CONCURRENT_REQUESTS;
         const resolvedConcurrency = queueOptions.concurrency ?? (
@@ -1225,11 +1244,12 @@ export class RallyClient {
         );
 
         // Only pass options supported by p-queue v8+.
-        const supported: Record<string, unknown> = { concurrency: resolvedConcurrency };
-        if (queueOptions.timeout !== undefined) supported.timeout = queueOptions.timeout;
-        if (queueOptions.throwOnTimeout !== undefined) supported.throwOnTimeout = queueOptions.throwOnTimeout;
-        if (queueOptions.autoStart !== undefined) supported.autoStart = queueOptions.autoStart;
-        return supported;
+        return {
+            concurrency: resolvedConcurrency,
+            ...(queueOptions.timeout !== undefined ? { timeout: queueOptions.timeout } : {}),
+            ...(queueOptions.throwOnTimeout !== undefined ? { throwOnTimeout: queueOptions.throwOnTimeout } : {}),
+            ...(queueOptions.autoStart !== undefined ? { autoStart: queueOptions.autoStart } : {})
+        };
     }
 
     /**

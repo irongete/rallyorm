@@ -18,9 +18,7 @@
   "files": [
     "dist/",
     "README.md",
-    "LICENSE",
-    "CHANGELOG.md",
-    "SECURITY.md"
+    "LICENSE"
   ],
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.build.json",

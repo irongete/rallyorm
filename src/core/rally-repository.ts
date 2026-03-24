@@ -4,6 +4,7 @@ import type { RallyClient, IQueryOptions } from './rally-client.js';
 import type { RallyDataSource } from './rally-datasource.js';
 import { RallyEntity } from '../models/base-entity.js';
 import type { RallyModelClass } from '../models/registry.js';
+import { RallyValidationError, RallyOperationError } from './errors.js';
 
 export interface IFindOptions extends IQueryOptions {
     include?: string | string[];
@@ -37,10 +38,10 @@ export class RallyRepository<T extends RallyEntity = any> {
         dataSource: RallyDataSource | null = null
     ) {
         if (!entityType || typeof entityType !== 'string') {
-            throw new Error('Entity type is required and must be a string');
+            throw new RallyValidationError('Entity type is required and must be a string');
         }
         if (!rallyClient || typeof rallyClient.query !== 'function') {
-            throw new Error('Rally client is required and must be a valid RallyClient instance');
+            throw new RallyValidationError('Rally client is required and must be a valid RallyClient instance');
         }
 
         this.entityType = entityType;
@@ -188,11 +189,16 @@ export class RallyRepository<T extends RallyEntity = any> {
     }
 
     /**
-     * Create a new entity
+     * Create a new entity.
+     *
+     * @remarks **Tags non-atomicity**: if `entityData` contains a `Tags` array with string names,
+     * each tag is resolved or created individually before the create request is sent.
+     * This operation is **not atomic**: if one tag creation fails after others have already been
+     * created in Rally, those previously created tags remain and are not rolled back.
      */
     async create(entityData: any): Promise<T> {
         if (!entityData || typeof entityData !== 'object') {
-            throw new Error('Entity data is required and must be an object');
+            throw new RallyValidationError('Entity data is required and must be an object');
         }
 
         const cleanData = await this._prepareSaveData(entityData);
@@ -206,10 +212,10 @@ export class RallyRepository<T extends RallyEntity = any> {
      */
     async update(objectId: string | number | undefined, updateData: any): Promise<T> {
         if (!objectId) {
-            throw new Error('ObjectID is required');
+            throw new RallyValidationError('ObjectID is required');
         }
         if (!updateData || typeof updateData !== 'object') {
-            throw new Error('Update data is required and must be an object');
+            throw new RallyValidationError('Update data is required and must be an object');
         }
 
         let dataToUpdate = updateData;
@@ -243,11 +249,16 @@ export class RallyRepository<T extends RallyEntity = any> {
     }
 
     /**
-     * Save an entity (create if new, update if exists)
+     * Save an entity (create if new, update if exists).
+     *
+     * @remarks **Tags non-atomicity**: if the entity contains a `Tags` array with string names,
+     * each tag is resolved or created individually before the write request is sent.
+     * This operation is **not atomic**: if one tag creation fails after others have already been
+     * created in Rally, those previously created tags remain and are not rolled back.
      */
     async save(entity: any): Promise<T> {
         if (!entity || typeof entity !== 'object') {
-            throw new Error('Entity is required and must be an object');
+            throw new RallyValidationError('Entity is required and must be an object');
         }
 
         const raw = (typeof entity.toJSON === 'function')
@@ -269,7 +280,7 @@ export class RallyRepository<T extends RallyEntity = any> {
      */
     async delete(objectId: string | number): Promise<boolean> {
         if (!objectId) {
-            throw new Error('ObjectID is required');
+            throw new RallyValidationError('ObjectID is required');
         }
 
         await this.client.delete(this.entityType, objectId);
@@ -289,7 +300,7 @@ export class RallyRepository<T extends RallyEntity = any> {
         }
 
         if (!objectId) {
-            throw new Error('Cannot determine ObjectID from provided argument');
+            throw new RallyValidationError('Cannot determine ObjectID from provided argument');
         }
 
         await this.delete(objectId);
@@ -446,7 +457,7 @@ export class RallyRepository<T extends RallyEntity = any> {
                     }
                     break;
                 default:
-                    throw new Error(`Unsupported query operator: ${operator}`);
+                    throw new RallyValidationError(`Unsupported query operator: ${operator}`);
             }
         }
 
@@ -466,8 +477,8 @@ export class RallyRepository<T extends RallyEntity = any> {
     }
 
     private _escapeField(field: string): string {
-        if (!/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(field)) {
-            throw new Error(`Invalid query field path: ${field}`);
+        if (!/^[A-Za-z_][A-Za-z0-9_]*(\.([A-Za-z_][A-Za-z0-9_]*))*$/.test(field)) {
+            throw new RallyValidationError(`Invalid query field path: ${field}`);
         }
 
         return field;
@@ -888,8 +899,9 @@ export class RallyRepository<T extends RallyEntity = any> {
         }
 
         if (failedTagNames.length > 0) {
-            throw new Error(
-                `Failed to resolve or create Rally tags for ${this.entityType}: ${failedTagNames.join(', ')}`
+            throw new RallyOperationError(
+                `Failed to resolve or create Rally tags for ${this.entityType}: ${failedTagNames.join(', ')}`,
+                failedTagNames.map(n => `Could not resolve tag: ${n}`)
             );
         }
 
@@ -909,8 +921,9 @@ export class RallyRepository<T extends RallyEntity = any> {
         }
 
         if (failedTagNames.length > 0) {
-            throw new Error(
-                `Failed to resolve or create Rally tags for ${this.entityType}: ${failedTagNames.join(', ')}`
+            throw new RallyOperationError(
+                `Failed to resolve or create Rally tags for ${this.entityType}: ${failedTagNames.join(', ')}`,
+                failedTagNames.map(n => `Could not create tag: ${n}`)
             );
         }
 

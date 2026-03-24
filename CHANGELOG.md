@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-05-21
+
+### Added
+
+- **Typed error hierarchy** — `RallyError` base class plus `RallyValidationError`,
+  `RallyPermissionError`, `RallyOperationError` (carries `.rallyErrors[]` / `.rallyWarnings[]`),
+  `RallyNetworkError` (carries `.statusCode`), and `RallyTimeoutError`. All six classes are
+  exported from the package root, enabling consumer-side `instanceof` discrimination.
+- **Injectable logger** — `IRallyClientConfig.logger` option accepts any `IRallyLogger` instance,
+  bypassing the internal level-based console logger (e.g. for pino/winston integration).
+- **Independent concurrency retry count** — `IRallyClientConfig.concurrencyRetries` decouples
+  Rally logical concurrency-conflict retries from HTTP-level `retries`. Defaults to `retries`
+  for full backward compatibility.
+- **True LRU cache eviction** in `RelationshipLoader`: accessed entries are promoted to
+  most-recently-used position so frequently read relationships are never evicted under load
+  while the cache is below capacity.
+
+### Changed
+
+- All input-validation errors now throw `RallyValidationError` instead of `Error`.
+- All write-permission errors now throw `RallyPermissionError` instead of `Error`.
+- All Rally API operation failures now throw `RallyOperationError` instead of `Error`.
+- HTTP / network errors now throw `RallyNetworkError`; timeouts throw `RallyTimeoutError`.
+- `RallyRepository.save()` and `RallyRepository.create()` JSDoc now documents the
+  non-atomic nature of string-based Tag resolution.
+
 ## [1.0.0] - 2025-05-20
 
 ### Added

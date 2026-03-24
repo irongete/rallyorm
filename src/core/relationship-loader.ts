@@ -474,7 +474,7 @@ export class RelationshipLoader {
         return refs
             .map(ref => {
                 const rel = this._toRelativeRef(ref) as string;
-                return this.cache.get(rel) || this.cache.get(this._toAbsoluteRef(rel) as string) || this.cache.get(ref);
+                return this._getCacheEntry(rel) || this._getCacheEntry(this._toAbsoluteRef(rel) as string) || this._getCacheEntry(ref);
             })
             .filter((entity): entity is IRelationshipEntity => Boolean(entity));
     }
@@ -547,6 +547,20 @@ export class RelationshipLoader {
             }
             this.cache.delete(oldestKey);
         }
+    }
+
+    /**
+     * Retrieve a cached entity and promote it to most-recently-used position.
+     * Returns undefined on cache miss.
+     */
+    private _getCacheEntry(key: string): IRelationshipEntity | undefined {
+        const value = this.cache.get(key);
+        if (value !== undefined) {
+            // Promote to tail (most-recently-used) by deleting and re-inserting.
+            this.cache.delete(key);
+            this.cache.set(key, value);
+        }
+        return value;
     }
 
     /**

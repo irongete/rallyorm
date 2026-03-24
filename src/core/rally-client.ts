@@ -1,6 +1,22 @@
 import PQueue from 'p-queue';
 import pRetry, { AbortError } from 'p-retry';
 import { readFileSync } from 'fs';
+import {
+    RallyError,
+    RallyValidationError,
+    RallyPermissionError,
+    RallyOperationError,
+    RallyNetworkError,
+    RallyTimeoutError
+} from './errors.js';
+export {
+    RallyError,
+    RallyValidationError,
+    RallyPermissionError,
+    RallyOperationError,
+    RallyNetworkError,
+    RallyTimeoutError
+} from './errors.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { toAbsoluteRef, toRelativeRef } from './ref-utils.js';
@@ -36,6 +52,8 @@ export interface IRallyClientConfig {
     allowUpdate?: boolean;
     allowDelete?: boolean;
     readOnly?: boolean | null;
+    concurrencyRetries?: number;
+    logger?: IRallyLogger;
     relationshipLoaderOptions?: IRelationshipLoaderOptions;
     fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
@@ -140,10 +158,13 @@ export class RallyClient {
         this.debug = cfg.debug;
         this.fetch = cfg.fetch;
         this._jsessionCookie = null;
-        this._concurrencyRetries = cfg.retries;
+        const rawConcurrencyRetries = options.concurrencyRetries !== undefined
+            ? options.concurrencyRetries
+            : cfg.retries;
+        this._concurrencyRetries = Math.max(0, rawConcurrencyRetries);
 
         this.logLevel = this._resolveLogLevel(options);
-        this.logger = this._buildLogger(this.logLevel);
+        this.logger = options.logger ?? this._buildLogger(this.logLevel);
 
         const perms = this._buildPermissions(options, this.logger);
         this.readOnly = perms.readOnly;
@@ -164,7 +185,8 @@ export class RallyClient {
         const contextMsg = entityType ? ` for ${entityType}` : '';
 
         if (this.readOnly) {
-            throw new Error(`RallyClient: ${operation.toUpperCase()} operation${contextMsg} not allowed - client is in read-only mode. ` +
+            throw new RallyPermissionError(
+                `RallyClient: ${operation.toUpperCase()} operation${contextMsg} not allowed - client is in read-only mode. ` +
                 'To enable write operations, set readOnly: false and enable specific operations, or use environment variables.'
             );
         }
@@ -172,7 +194,7 @@ export class RallyClient {
         switch (operation) {
             case 'create':
                 if (!this.allowCreate) {
-                    throw new Error(
+                    throw new RallyPermissionError(
                         `RallyClient: CREATE operation${contextMsg} not allowed. ` +
                         'Enable with allowCreate: true option or set RALLY_ALLOW_CREATE=true environment variable.'
                     );
@@ -180,7 +202,7 @@ export class RallyClient {
                 break;
             case 'update':
                 if (!this.allowUpdate) {
-                    throw new Error(
+                    throw new RallyPermissionError(
                         `RallyClient: UPDATE operation${contextMsg} not allowed. ` +
                         'Enable with allowUpdate: true option or set RALLY_ALLOW_UPDATE=true environment variable.'
                     );
@@ -188,14 +210,14 @@ export class RallyClient {
                 break;
             case 'delete':
                 if (!this.allowDelete) {
-                    throw new Error(
+                    throw new RallyPermissionError(
                         `RallyClient: DELETE operation${contextMsg} not allowed. ` +
                         'Enable with allowDelete: true option or set RALLY_ALLOW_DELETE=true environment variable.'
                     );
                 }
                 break;
             default:
-                throw new Error(`RallyClient: Unknown operation type: ${operation}`);
+                throw new RallyValidationError(`RallyClient: Unknown operation type: ${operation}`);
         }
     }
 
@@ -374,14 +396,14 @@ export class RallyClient {
 
                         this.logger.warn(`Rate limited, waiting ${delayMs}ms before retry`);
                         await new Promise(resolve => setTimeout(resolve, delayMs));
-                        throw new Error(`Retryable: ${errorMessage}`);
+                        throw new RallyNetworkError(`Retryable: ${errorMessage}`, response.status);
                     }
 
                     if (response.status >= 500) {
-                        throw new Error(`Retryable: ${errorMessage}`);
+                        throw new RallyNetworkError(`Retryable: ${errorMessage}`, response.status);
                     }
 
-                    throw new AbortError(`${errorMessage}: ${responseText.slice(0, 300)}`);
+                    throw new AbortError(new RallyNetworkError(`${errorMessage}: ${responseText.slice(0, 300)}`, response.status));
                 }
 
                 this.logger.debug(`${method} ${this._formatUrlForLog(requestUrl)} [status=${response.status}]`);
@@ -393,18 +415,22 @@ export class RallyClient {
                 try {
                     return JSON.parse(responseText);
                 } catch (error: any) {
-                    throw new Error(`Retryable: Invalid JSON response - ${error.message}`);
+                    throw new RallyNetworkError(`Retryable: Invalid JSON response - ${error.message}`);
                 }
 
             } catch (error: any) {
                 clearTimeout(timeoutId);
 
-                if (error.name === 'AbortError' || error.message.includes('timeout')) {
-                    throw new Error(`Retryable: Request timeout after ${this.timeoutMs}ms`);
+                if (error instanceof AbortError) {
+                    throw error;
                 }
 
-                if (error.message.includes('fetch')) {
-                    throw new Error(`Retryable: Network error - ${error.message}`);
+                if (error.name === 'AbortError' || error.message?.includes('timeout')) {
+                    throw new RallyTimeoutError(`Request timeout after ${this.timeoutMs}ms`);
+                }
+
+                if (error.message?.includes('fetch')) {
+                    throw new RallyNetworkError(`Network error - ${error.message}`);
                 }
 
                 throw error;
@@ -419,7 +445,7 @@ export class RallyClient {
      */
     async query(type: string, { query, fetch, start = 1, pagesize = 200, order }: IQueryOptions = {}): Promise<any[]> {
         if (!type || typeof type !== 'string') {
-            throw new Error('Entity type is required and must be a string');
+            throw new RallyValidationError('Entity type is required and must be a string');
         }
 
         const startIndex = this._normalizeIntegerOption(start, 'start', 1);
@@ -439,7 +465,7 @@ export class RallyClient {
      */
     async queryCount(type: string, { query }: IQueryOptions = {}): Promise<number> {
         if (!type || typeof type !== 'string') {
-            throw new Error('Entity type is required and must be a string');
+            throw new RallyValidationError('Entity type is required and must be a string');
         }
 
         const result = await this._fetchJson(this._url(type), {
@@ -456,7 +482,7 @@ export class RallyClient {
      */
     async queryAll(type: string, { query, fetch, order, pagesize = 200, maxResults, timeoutMs, start = 1 }: IQueryOptions = {}): Promise<any[]> {
         if (!type || typeof type !== 'string') {
-            throw new Error('Entity type is required and must be a string');
+            throw new RallyValidationError('Entity type is required and must be a string');
         }
 
         const pageSize = this._normalizeIntegerOption(pagesize, 'pagesize', 1);
@@ -534,10 +560,10 @@ export class RallyClient {
      */
     async get(type: string, objectId: string | number, { fetch }: Pick<IQueryOptions, 'fetch'> = {}): Promise<any> {
         if (!type || typeof type !== 'string') {
-            throw new Error('Entity type is required and must be a string');
+            throw new RallyValidationError('Entity type is required and must be a string');
         }
         if (!objectId) {
-            throw new Error('ObjectID is required');
+            throw new RallyValidationError('ObjectID is required');
         }
 
         const result = await this._fetchJson(this._url(`${type}/${objectId}`), {
@@ -554,7 +580,7 @@ export class RallyClient {
      */
     async queryCollection(collectionRef: string, { fetch, start = 1, pagesize = 200 }: ICollectionQueryOptions = {}): Promise<any[]> {
         if (!collectionRef || typeof collectionRef !== 'string') {
-            throw new Error('Collection reference is required and must be a string');
+            throw new RallyValidationError('Collection reference is required and must be a string');
         }
 
         const startIndex = this._normalizeIntegerOption(start, 'start', 1);
@@ -574,7 +600,7 @@ export class RallyClient {
      */
     async queryCollectionAll(collectionRef: string, { fetch, start = 1, pagesize = 200, maxResults, timeoutMs }: ICollectionQueryOptions = {}): Promise<any[]> {
         if (!collectionRef || typeof collectionRef !== 'string') {
-            throw new Error('Collection reference is required and must be a string');
+            throw new RallyValidationError('Collection reference is required and must be a string');
         }
 
         const startIndex = this._normalizeIntegerOption(start, 'start', 1);
@@ -665,10 +691,10 @@ export class RallyClient {
         this._checkWritePermission('create', type);
 
         if (!type || typeof type !== 'string') {
-            throw new Error('Entity type is required and must be a string');
+            throw new RallyValidationError('Entity type is required and must be a string');
         }
         if (!payload || typeof payload !== 'object') {
-            throw new Error('Payload is required and must be an object');
+            throw new RallyValidationError('Payload is required and must be an object');
         }
 
         this.logger.warn(`Creating new ${type} entity`);
@@ -699,13 +725,13 @@ export class RallyClient {
         this._checkWritePermission('update', type);
 
         if (!type || typeof type !== 'string') {
-            throw new Error('Entity type is required and must be a string');
+            throw new RallyValidationError('Entity type is required and must be a string');
         }
         if (!objectId) {
-            throw new Error('ObjectID is required');
+            throw new RallyValidationError('ObjectID is required');
         }
         if (!payload || typeof payload !== 'object') {
-            throw new Error('Payload is required and must be an object');
+            throw new RallyValidationError('Payload is required and must be an object');
         }
 
         this.logger.warn(`Updating ${type} entity ${objectId}`);
@@ -736,10 +762,10 @@ export class RallyClient {
         this._checkWritePermission('delete', type);
 
         if (!type || typeof type !== 'string') {
-            throw new Error('Entity type is required and must be a string');
+            throw new RallyValidationError('Entity type is required and must be a string');
         }
         if (!objectId) {
-            throw new Error('ObjectID is required');
+            throw new RallyValidationError('ObjectID is required');
         }
 
         this.logger.warn(`Deleting ${type} entity ${objectId}`);
@@ -828,13 +854,17 @@ export class RallyClient {
         if (Array.isArray(errors) && errors.length > 0) {
             this.logger.error(`${actionLabel} returned errors:`, errors);
             if (throwOnErrors) {
-                throw new Error(`Rally ${action} failed for ${type}${objectId ? ` ${objectId}` : ''}: ${errors.join(' | ')}`);
+                throw new RallyOperationError(
+                    `Rally ${action} failed for ${type}${objectId ? ` ${objectId}` : ''}: ${errors.join(' | ')}`,
+                    errors,
+                    warnings
+                );
             }
         } else if (!success) {
             const message = `Rally ${action} failed for ${type}${objectId ? ` ${objectId}` : ''}: response did not confirm success`;
             this.logger.error(message, result);
             if (throwOnErrors) {
-                throw new Error(message);
+                throw new RallyOperationError(message, [], warnings);
             }
         } else if (warnings.length > 0) {
             this.logger.warn(`${actionLabel} returned warnings:`, warnings);
@@ -909,7 +939,7 @@ export class RallyClient {
             const { errors } = this._analyzeOperationResult(result) || {};
             if (this._isConcurrencyConflict(errors)) {
                 this.logger.warn(`${label}: concurrency conflict detected, will retry`);
-                throw new Error('Retryable: Concurrency conflict');
+                throw new RallyOperationError('Retryable: Concurrency conflict', errors || []);
             }
             return result;
         };
@@ -944,11 +974,11 @@ export class RallyClient {
         const { apiKey, authMode, relationshipLoaderOptions } = options;
 
         if (!apiKey || typeof apiKey !== 'string') {
-            throw new Error('RallyClient: apiKey is required and must be a string');
+            throw new RallyValidationError('RallyClient: apiKey is required and must be a string');
         }
 
         if (authMode && !['bearer', 'zsessionid'].includes(authMode)) {
-            throw new Error('RallyClient: authMode must be either "bearer" or "zsessionid"');
+            throw new RallyValidationError('RallyClient: authMode must be either "bearer" or "zsessionid"');
         }
 
         if (relationshipLoaderOptions?.maxDepth !== undefined) {
@@ -1122,7 +1152,7 @@ export class RallyClient {
         const numericValue = Number(value);
 
         if (!Number.isInteger(numericValue) || numericValue < minimum) {
-            throw new Error(`RallyClient: ${optionName} must be an integer >= ${minimum}`);
+            throw new RallyValidationError(`RallyClient: ${optionName} must be an integer >= ${minimum}`);
         }
 
         return numericValue;

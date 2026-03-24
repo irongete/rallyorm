@@ -2,6 +2,16 @@
  * RallyORM public exports.
  */
 
+// Errors
+export {
+	RallyError,
+	RallyValidationError,
+	RallyPermissionError,
+	RallyOperationError,
+	RallyNetworkError,
+	RallyTimeoutError
+} from './core/errors.js';
+
 // Core API
 export { RallyClient as Rally, RallyClient } from './core/rally-client.js';
 export type {

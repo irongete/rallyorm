@@ -3,6 +3,7 @@ import { RallyRepository } from './rally-repository.js';
 import { RallyEntity } from '../models/base-entity.js';
 import { normalizeEntityType } from './ref-utils.js';
 import { MODEL_REGISTRY, type RallyModelClass } from '../models/registry.js';
+import { RallyValidationError } from './errors.js';
 
 // Core artifacts
 import { UserStory } from '../models/user-story.js';
@@ -161,7 +162,7 @@ export class RallyDataSource {
      */
     constructor(clientOptions: IRallyClientConfig) {
         if (!clientOptions || typeof clientOptions !== 'object') {
-            throw new Error('Client options are required');
+            throw new RallyValidationError('Client options are required');
         }
 
         this.client = new RallyClient(clientOptions);
@@ -187,7 +188,7 @@ export class RallyDataSource {
             ModelClass = (this.modelRegistry[entityType] as typeof RallyEntity | undefined) || RallyEntity;
         }
         else {
-            throw new Error('Repository requires a model class with entityType or entity type string');
+            throw new RallyValidationError('Repository requires a model class with entityType or entity type string');
         }
 
         const cacheKey = `${entityType}:${ModelClass.name}`;

@@ -657,7 +657,7 @@ export class RallyClient {
 
         const result = await this._performWithConcurrencyRetry(
             `create:${type}`,
-            () => this._fetchJson(this._url(`${type}/create.js`), {
+            () => this._fetchJson(this._url(`${type}/create`), {
                 method: 'POST',
                 body: { [entityKey]: payload },
                 meta: { op: 'create', type }

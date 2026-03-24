@@ -332,7 +332,7 @@ describe('RallyClient', function () {
                 apiKey: 'test-key',
                 allowCreate: true,
                 fetch: createMockFetch({
-                    '/defect/create.js': {
+                    '/defect/create': {
                         CreateResult: {
                             Errors: ['Validation failed'],
                             Warnings: []
@@ -370,7 +370,7 @@ describe('RallyClient', function () {
                 apiKey: 'test-key',
                 allowUpdate: true,
                 fetch: createMockFetch({
-                    '/defect/123': {
+                    '/defect/create': {
                         OperationResult: {
                             Success: false,
                             Errors: [],

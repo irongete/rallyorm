@@ -249,24 +249,6 @@ npm publish
 `release:check:live` already enables `RALLY_INTEGRATION=1` internally. You still need the corresponding environment variables to be present.
 
 `npm publish` now runs `release:check:publish`, which fails fast unless `RALLY_API_KEY` and `RALLY_TEST_PROJECT_OID` are present and the live suite passes.
-*** Add File: c:\Users\irongete\Desktop\github\rallyorm\scripts\require-live-release-env.mjs
-const requiredVariables = [
-  'RALLY_API_KEY',
-  'RALLY_TEST_PROJECT_OID'
-];
-
-const missingVariables = requiredVariables.filter(variableName => {
-  const value = process.env[variableName];
-  return typeof value !== 'string' || value.trim().length === 0;
-});
-
-if (missingVariables.length > 0) {
-  console.error(
-    `Stable publish requires live Rally validation. Missing environment variables: ${missingVariables.join(', ')}`
-  );
-  console.error('Set the required live credentials and rerun npm publish or npm run release:check:publish.');
-  process.exit(1);
-}
 
 ## License
 

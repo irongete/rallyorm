@@ -52,7 +52,7 @@ describe('RelationshipLoader', () => {
         }
 
         const client = createMockClient({
-            query: async (entityType: string, options: { query?: string }) => {
+            queryAll: async (entityType: string, options: { query?: string }) => {
                 if (entityType === 'portfolioitem/feature') {
                     expect(options.query).to.include('(ObjectID = 42)');
                     return [{
@@ -107,7 +107,7 @@ describe('RelationshipLoader', () => {
         }
 
         const client = createMockClient({
-            query: async (entityType: string, options: { query?: string }) => {
+            queryAll: async (entityType: string, options: { query?: string }) => {
                 expect(entityType).to.equal('task');
                 expect(options.query).to.equal('(WorkProduct = "/hierarchicalrequirement/1")');
                 return [{
@@ -143,7 +143,7 @@ describe('RelationshipLoader', () => {
         }
 
         const client = createMockClient({
-            queryCollection: async (ref: string, options: { fetch?: string }) => {
+            queryCollectionAll: async (ref: string, options: { fetch?: string }) => {
                 expect(ref).to.equal('/project/1/TeamMembers');
                 expect(options.fetch).to.equal('ObjectID,DisplayName');
                 return [
@@ -166,6 +166,70 @@ describe('RelationshipLoader', () => {
 
         expect(project._data.TeamMembers).to.have.length(1);
         expect(project._data.TeamMembers[0]).to.include({ _ref: '/user/2', DisplayName: 'Grace Hopper' });
+    });
+
+    it('should use queryAll for inverse relationships so large result sets are not truncated', async () => {
+        class Story extends RallyEntity {
+            static entityType = 'hierarchicalrequirement';
+            static relations = {
+                Tasks: { type: 'hasMany', entity: 'task', foreignKey: 'WorkProduct', inverseRef: true }
+            };
+        }
+
+        const client = createMockClient({
+            query: async () => {
+                throw new Error('query should not be used for inverse relation loading');
+            },
+            queryAll: async (_entityType: string, options: { query?: string }) => {
+                expect(options.query).to.equal('(WorkProduct = "/hierarchicalrequirement/1")');
+                return [
+                    { _ref: '/task/10', _type: 'task', Name: 'Task 10', WorkProduct: { _ref: '/hierarchicalrequirement/1' } },
+                    { _ref: '/task/11', _type: 'task', Name: 'Task 11', WorkProduct: { _ref: '/hierarchicalrequirement/1' } }
+                ];
+            }
+        });
+
+        const loader = new RelationshipLoader(client as any);
+        const story = new Story({
+            _ref: '/hierarchicalrequirement/1',
+            _type: 'hierarchicalrequirement'
+        });
+
+        await loader.loadRelationships(story, ['Tasks'], {
+            hierarchicalrequirement: Story,
+            task: RallyEntity
+        });
+
+        expect(story._data.Tasks).to.have.length(2);
+    });
+
+    it('should deduplicate inverse relation refs before building the query', async () => {
+        class Story extends RallyEntity {
+            static entityType = 'hierarchicalrequirement';
+            static relations = {
+                Tasks: { type: 'hasMany', entity: 'task', foreignKey: 'WorkProduct', inverseRef: true }
+            };
+        }
+
+        const client = createMockClient({
+            queryAll: async (_entityType: string, options: { query?: string }) => {
+                expect(options.query).to.equal('(WorkProduct = "/hierarchicalrequirement/1")');
+                return [];
+            }
+        });
+
+        const loader = new RelationshipLoader(client as any);
+        const story = new Story({
+            _ref: '/hierarchicalrequirement/1',
+            _type: 'hierarchicalrequirement'
+        });
+
+        await loader.loadRelationships([story, story], ['Tasks'], {
+            hierarchicalrequirement: Story,
+            task: RallyEntity
+        });
+
+        expect(story._data.Tasks).to.deep.equal([]);
     });
 
     it('should keep tag shortcut handling for tag collections', async () => {
@@ -211,7 +275,7 @@ describe('RelationshipLoader', () => {
         let peakConcurrency = 0;
 
         const client = createMockClient({
-            queryCollection: async (ref: string) => {
+            queryCollectionAll: async (ref: string) => {
                 activeRequests += 1;
                 peakConcurrency = Math.max(peakConcurrency, activeRequests);
 

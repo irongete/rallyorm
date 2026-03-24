@@ -47,6 +47,8 @@ export interface ICollectionQueryOptions {
     fetch?: string | string[];
     start?: number;
     pagesize?: number;
+    maxResults?: number;
+    timeoutMs?: number;
 }
 
 export interface IWritePermissions {
@@ -526,16 +528,102 @@ export class RallyClient {
         const startIndex = this._normalizeIntegerOption(start, 'start', 1);
         const pageSize = this._normalizeIntegerOption(pagesize, 'pagesize', 1);
 
+        const result = await this._queryCollectionPage(collectionRef, {
+            fetch,
+            start: startIndex,
+            pagesize: pageSize
+        });
+
+        return result?.QueryResult?.Results ?? result?.Results ?? [];
+    }
+
+    /**
+     * Query all items from a Rally collection reference.
+     */
+    async queryCollectionAll(collectionRef: string, { fetch, start = 1, pagesize = 200, maxResults, timeoutMs }: ICollectionQueryOptions = {}): Promise<any[]> {
+        if (!collectionRef || typeof collectionRef !== 'string') {
+            throw new Error('Collection reference is required and must be a string');
+        }
+
+        const startIndex = this._normalizeIntegerOption(start, 'start', 1);
+        const pageSize = this._normalizeIntegerOption(pagesize, 'pagesize', 1);
+        const normalizedMaxResults = maxResults === undefined
+            ? undefined
+            : this._normalizeIntegerOption(maxResults, 'maxResults', 0);
+
+        if (normalizedMaxResults === 0) {
+            return [];
+        }
+
+        const operationDeadline = timeoutMs ? Date.now() + timeoutMs : null;
+
+        const firstResult = await this._queryCollectionPage(collectionRef, {
+            fetch,
+            start: startIndex,
+            pagesize: pageSize
+        });
+
+        const queryResult = firstResult?.QueryResult;
+        if (!queryResult) {
+            return firstResult?.Results ?? [];
+        }
+
+        const totalCount = queryResult.TotalResultCount ?? 0;
+        const results = [...(queryResult.Results || [])];
+        const remainingFromStart = Math.max(0, totalCount - (startIndex - 1));
+        const effectiveMaxResults = normalizedMaxResults !== undefined
+            ? Math.min(normalizedMaxResults, remainingFromStart)
+            : remainingFromStart;
+
+        if (results.length >= effectiveMaxResults) {
+            return results.slice(0, effectiveMaxResults);
+        }
+
+        const remainingPages = [];
+        for (let nextStart = startIndex + pageSize; (nextStart - (startIndex - 1)) <= effectiveMaxResults; nextStart += pageSize) {
+            remainingPages.push(nextStart);
+        }
+
+        const batchSize = Math.max(1, (this.queue.concurrency || 10) * 2);
+
+        for (let index = 0; index < remainingPages.length; index += batchSize) {
+            if (operationDeadline && Date.now() > operationDeadline) {
+                this.logger.warn(`Collection query timeout reached, returning ${results.length} results`);
+                break;
+            }
+
+            const batch = remainingPages.slice(index, index + batchSize);
+            const pages = await Promise.all(batch.map(nextStart =>
+                this._queryCollectionPage(collectionRef, {
+                    fetch,
+                    start: nextStart,
+                    pagesize: pageSize
+                }).then(data => data?.QueryResult?.Results ?? data?.Results ?? [])
+            ));
+
+            for (const page of pages) {
+                results.push(...page);
+                if (results.length >= effectiveMaxResults) {
+                    return results.slice(0, effectiveMaxResults);
+                }
+            }
+        }
+
+        return results.slice(0, effectiveMaxResults);
+    }
+
+    private async _queryCollectionPage(collectionRef: string, { fetch, start, pagesize }: Required<Pick<ICollectionQueryOptions, 'start' | 'pagesize'>> & Pick<ICollectionQueryOptions, 'fetch'>): Promise<any> {
+        const startIndex = this._normalizeIntegerOption(start, 'start', 1);
+        const pageSize = this._normalizeIntegerOption(pagesize, 'pagesize', 1);
+
         const relativeRef = toRelativeRef(collectionRef, this.baseUrl);
         const absoluteRef = toAbsoluteRef(relativeRef || collectionRef, this.baseUrl) || collectionRef;
 
-        const result = await this._fetchJson(absoluteRef, {
+        return this._fetchJson(absoluteRef, {
             method: 'GET',
             params: { fetch, start: startIndex, pagesize: pageSize },
             meta: { op: 'queryCollection', ref: relativeRef || collectionRef, start: startIndex, pagesize: pageSize }
         });
-
-        return result?.QueryResult?.Results ?? result?.Results ?? [];
     }
 
     /**

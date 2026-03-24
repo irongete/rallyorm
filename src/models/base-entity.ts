@@ -161,6 +161,7 @@ export class RallyEntity {
                 }
                 if (target._data && typeof prop === 'string') {
                     target._data[prop] = value;
+                    target._relationCache.delete(prop);
                     return true;
                 }
                 return Reflect.set(target, prop, value, receiver);
@@ -180,8 +181,16 @@ export class RallyEntity {
             if (!Object.prototype.hasOwnProperty.call(this, relationName)) {
                 Object.defineProperty(this, relationName, {
                     get() {
+                        if (this._relationCache.has(relationName)) {
+                            return this._relationCache.get(relationName);
+                        }
+
                         const val = this._data[relationName];
                         // Detect if this is a lazy-loadable reference
+                        if (val instanceof RallyEntity) {
+                            return val;
+                        }
+
                         if (val && val._ref && this._context && this._context.dataSource) {
                             const lazyLinkData = relationDefinition?.entity && !val._type
                                 ? { ...val, _type: relationDefinition.entity }

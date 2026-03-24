@@ -9,6 +9,7 @@ export function createMockClient(overrides: any = {}): any {
     return {
         query: async () => [],
         queryCollection: async () => [],
+        queryCollectionAll: async () => [],
         queryAll: async () => [],
         queryCount: async () => 0,
         get: async () => null,

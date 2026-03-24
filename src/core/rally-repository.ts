@@ -1,13 +1,17 @@
 import { RelationshipLoader } from './relationship-loader.js';
-import { isRallyRef, toRelativeRef } from './ref-utils.js';
+import { getEntityTypeFromRef, isRallyRef, normalizeEntityType, toRelativeRef } from './ref-utils.js';
 import type { RallyClient, IQueryOptions } from './rally-client.js';
 import type { RallyDataSource } from './rally-datasource.js';
 import { RallyEntity } from '../models/base-entity.js';
 import type { RallyModelClass } from '../models/registry.js';
 
 export interface IFindOptions extends IQueryOptions {
-    include?: string[];
+    include?: string | string[];
     where?: Record<string, unknown>;
+}
+
+interface IIncludeNode {
+    children: Record<string, IIncludeNode>;
 }
 
 /**
@@ -64,6 +68,8 @@ export class RallyRepository<T extends RallyEntity = any> {
                 include,
                 this.modelRegistry
             );
+
+            this._hydrateIncludedRelationships(entities, include);
         }
 
         return entities;
@@ -94,6 +100,8 @@ export class RallyRepository<T extends RallyEntity = any> {
                 include,
                 this.modelRegistry
             );
+
+            this._hydrateIncludedRelationships(entities, include);
         }
 
         return entities;
@@ -124,6 +132,8 @@ export class RallyRepository<T extends RallyEntity = any> {
                 include,
                 this.modelRegistry
             );
+
+            this._hydrateIncludedRelationships(entities, include);
         }
 
         return entities;
@@ -153,6 +163,8 @@ export class RallyRepository<T extends RallyEntity = any> {
                     include,
                     this.modelRegistry
                 ) as T;
+
+                this._hydrateIncludedRelationships(entity, include);
             }
 
             return entity;
@@ -521,18 +533,130 @@ export class RallyRepository<T extends RallyEntity = any> {
         if (normalized.pageSize && !normalized.pagesize) { normalized.pagesize = normalized.pageSize; }
         if (normalized.limit && !normalized.maxResults) { normalized.maxResults = normalized.limit; }
 
+        const explicitInclude = this._normalizeInclude(normalized.include);
+
         if (normalized.fetch) {
             const { fetch, include } = this._parseUnifiedFetch(normalized.fetch);
             normalized.fetch = fetch.length > 0 ? fetch.join(',') : undefined;
-            if (include.length > 0) {
-                normalized.include = include;
-            }
+            normalized.include = this._mergeIncludes(explicitInclude, include);
+        } else {
+            normalized.include = explicitInclude;
         }
 
         if (typeof normalized.order === 'string') { normalized.order = normalized.order.trim(); }
         if (typeof normalized.fetch === 'string') { normalized.fetch = normalized.fetch.trim(); }
+        if (normalized.include && normalized.include.length === 0) { normalized.include = undefined; }
 
         return normalized;
+    }
+
+    private _normalizeInclude(includeSpec: unknown): string[] {
+        if (!includeSpec) {
+            return [];
+        }
+
+        if (Array.isArray(includeSpec)) {
+            return Array.from(new Set(includeSpec.map(item => String(item).trim()).filter(Boolean)));
+        }
+
+        if (typeof includeSpec === 'string') {
+            return Array.from(new Set(includeSpec.split(',').map(item => item.trim()).filter(Boolean)));
+        }
+
+        return [];
+    }
+
+    private _mergeIncludes(...includeGroups: string[][]): string[] {
+        return Array.from(new Set(includeGroups.flat().filter(Boolean)));
+    }
+
+    private _hydrateIncludedRelationships(entities: T | T[], includes: string[]): void {
+        const includeTree = this._buildIncludeTree(includes);
+        const entityArray = Array.isArray(entities) ? entities : [entities];
+
+        for (const entity of entityArray) {
+            if (entity instanceof RallyEntity) {
+                this._hydrateEntityRelations(entity, includeTree);
+            }
+        }
+    }
+
+    private _buildIncludeTree(includes: string[]): Record<string, IIncludeNode> {
+        const includeTree: Record<string, IIncludeNode> = {};
+
+        for (const include of includes) {
+            const parts = include.split('.').map(part => part.trim()).filter(Boolean);
+            if (parts.length === 0) {
+                continue;
+            }
+
+            let current = includeTree;
+            for (const part of parts) {
+                if (!current[part]) {
+                    current[part] = { children: {} };
+                }
+                current = current[part].children;
+            }
+        }
+
+        return includeTree;
+    }
+
+    private _hydrateEntityRelations(entity: RallyEntity, includeTree: Record<string, IIncludeNode>): void {
+        const relations = (entity.constructor as typeof RallyEntity).relations || {};
+
+        for (const [relationName, includeNode] of Object.entries(includeTree)) {
+            const relation = relations[relationName];
+            if (!relation) {
+                continue;
+            }
+
+            const rawValue = entity._data?.[relationName];
+            const hydratedValue = this._hydrateRelationValue(rawValue, relation.entity, includeNode.children);
+
+            if (hydratedValue !== undefined) {
+                entity._relationCache.set(relationName, hydratedValue);
+            }
+        }
+    }
+
+    private _hydrateRelationValue(value: any, relationEntityType: string | undefined, nestedIncludeTree: Record<string, IIncludeNode>): any {
+        if (Array.isArray(value)) {
+            return value.map(item => this._hydrateRelationValue(item, relationEntityType, nestedIncludeTree));
+        }
+
+        if (!value || typeof value !== 'object') {
+            return value;
+        }
+
+        const wrapped = this._wrapRelatedEntity(value, relationEntityType);
+        if (!(wrapped instanceof RallyEntity)) {
+            return wrapped;
+        }
+
+        if (Object.keys(nestedIncludeTree).length > 0) {
+            this._hydrateEntityRelations(wrapped, nestedIncludeTree);
+        }
+
+        return wrapped;
+    }
+
+    private _wrapRelatedEntity(value: any, relationEntityType: string | undefined): any {
+        if (value instanceof RallyEntity) {
+            return value;
+        }
+
+        const detectedType = normalizeEntityType(relationEntityType)
+            || normalizeEntityType(value?._type)
+            || getEntityTypeFromRef(value?._ref);
+        const RelatedModel = detectedType ? this.modelRegistry[detectedType] : undefined;
+
+        if (!RelatedModel) {
+            return value;
+        }
+
+        const HydratedModel = RelatedModel as typeof RallyEntity;
+        return new HydratedModel(value, { dataSource: this.dataSource ?? undefined });
     }
 
     private _parseUnifiedFetch(fetchSpec: string | string[]): { fetch: string[], include: string[] } {

@@ -13,6 +13,7 @@ interface IRelationshipEntity {
     _ref?: string;
     _type?: string;
     _loadedRelations?: Set<string>;
+    _relationCache?: Map<string, unknown>;
     [key: string]: unknown;
 }
 
@@ -270,7 +271,7 @@ export class RelationshipLoader {
             }
 
             const fetch = this._buildCollectionFetchFields(relation, relationConfig, modelRegistry);
-            const relatedEntities = await this.client.queryCollection(collectionField._ref, {
+            const relatedEntities = await this.client.queryCollectionAll(collectionField._ref, {
                 fetch: fetch.length > 0 ? fetch.join(',') : undefined,
                 pagesize: 2000
             });
@@ -320,9 +321,11 @@ export class RelationshipLoader {
      * Load inverse foreign key relationships
      */
     private async _loadInverseForeignKeyRelation(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry): Promise<void> {
-        const entityRefs = entities
-            .map(e => e._ref)
-            .filter((ref): ref is string => typeof ref === 'string' && ref.length > 0);
+        const entityRefs = Array.from(new Set(
+            entities
+                .map(entity => this._toRelativeRef(entity._ref))
+                .filter((ref): ref is string => typeof ref === 'string' && ref.length > 0)
+        ));
 
         if (entityRefs.length === 0) { return; }
         if (!relation.foreignKey || !relation.entity) {
@@ -349,7 +352,7 @@ export class RelationshipLoader {
             }
         }
 
-        const relatedEntities = await this.client.query(relation.entity, {
+        const relatedEntities = await this.client.queryAll(relation.entity, {
             query,
             fetch: Array.from(prefetchFields).join(','),
             pagesize: 2000
@@ -417,21 +420,21 @@ export class RelationshipLoader {
         if (!entityType) { return []; }
         if (refs.length === 0) { return []; }
 
-        const uncachedRefs = refs.filter(ref => {
+        const uncachedRefs = Array.from(new Set(refs.map(ref => this._toRelativeRef(ref) || ref))).filter(ref => {
             const rel = this._toRelativeRef(ref) as string;
             const abs = this._toAbsoluteRef(rel) as string;
             return !(this.cache.has(rel) || this.cache.has(abs));
         });
 
         if (uncachedRefs.length > 0) {
-            const objectIds = uncachedRefs
+            const objectIds = Array.from(new Set(uncachedRefs
                 .map(ref => this._extractObjectIdFromRef(ref))
-                .filter(Boolean) as string[];
+                .filter(Boolean) as string[]));
 
             if (objectIds.length > 0) {
                 const query = this._buildObjectIdQuery(objectIds);
                 const fetch = Array.from(new Set(['ObjectID', ...extraFetchFields.filter(Boolean)]));
-                const entities = await this.client.query(entityType, {
+                const entities = await this.client.queryAll(entityType, {
                     query,
                     fetch: fetch.join(','),
                     pagesize: 2000
@@ -565,6 +568,10 @@ export class RelationshipLoader {
             entity._data[relationName] = value;
         } else {
             entity[relationName] = value;
+        }
+
+        if (entity._relationCache instanceof Map) {
+            entity._relationCache.delete(relationName);
         }
 
         if (entity._loadedRelations) {

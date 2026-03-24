@@ -418,6 +418,45 @@ describe('RallyClient', function () {
             expect(results).to.deep.equal([]);
             expect(fetchCalls).to.equal(0);
         });
+
+        it('should paginate queryCollectionAll until all results are fetched', async () => {
+            const seenStarts: number[] = [];
+
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                fetch: async (url) => {
+                    const parsedUrl = new URL(String(url));
+                    const start = Number(parsedUrl.searchParams.get('start') || '1');
+                    seenStarts.push(start);
+
+                    const pages: Record<number, any[]> = {
+                        1: [{ ObjectID: 1 }, { ObjectID: 2 }],
+                        3: [{ ObjectID: 3 }, { ObjectID: 4 }],
+                        5: [{ ObjectID: 5 }]
+                    };
+
+                    return {
+                        ok: true,
+                        status: 200,
+                        statusText: 'OK',
+                        headers: { get: () => null, getSetCookie: () => [] },
+                        text: async () => JSON.stringify({
+                            QueryResult: {
+                                Results: pages[start] || [],
+                                TotalResultCount: 5
+                            }
+                        })
+                    } as unknown as Response;
+                }
+            });
+
+            const results = await client.queryCollectionAll('/project/1/TeamMembers', {
+                pagesize: 2
+            });
+
+            expect(results.map(result => result.ObjectID)).to.deep.equal([1, 2, 3, 4, 5]);
+            expect(seenStarts).to.deep.equal([1, 3, 5]);
+        });
     });
 
     describe('Response Parsing', () => {

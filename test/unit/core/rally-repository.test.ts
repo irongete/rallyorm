@@ -1,5 +1,6 @@
 import { expect } from 'chai';
 import { RallyRepository } from '../../../src/core/rally-repository.js';
+import { LazyLink } from '../../../src/core/lazy-link.js';
 import { RallyEntity } from '../../../src/models/base-entity.js';
 import { createMockClient } from '../../setup/test-helpers.js';
 import { mockDefect } from '../../setup/fixtures.js';
@@ -152,6 +153,23 @@ describe('RallyRepository', function () {
             });
             expect(opts.fetch).to.include('Owner');
             expect(opts.include).to.include('Owner.DisplayName');
+        });
+
+        it('should merge explicit include with fetch dot notation', () => {
+            const opts = repo._normalizeOptions({
+                fetch: ['ObjectID', 'Project.Name'],
+                include: ['Owner.DisplayName']
+            });
+
+            expect(opts.include).to.deep.equal(['Owner.DisplayName', 'Project.Name']);
+        });
+
+        it('should normalize include when passed as a comma-delimited string', () => {
+            const opts = repo._normalizeOptions({
+                include: 'Owner.DisplayName, Project.Name, Owner.DisplayName'
+            });
+
+            expect(opts.include).to.deep.equal(['Owner.DisplayName', 'Project.Name']);
         });
     });
 
@@ -348,6 +366,47 @@ describe('RallyRepository', function () {
             expect(includeCalls).to.deep.equal([['Project.Name']]);
             expect(entity?.ObjectID).to.equal(123);
             expect(entity?.Project.Name).to.equal('Project 1');
+        });
+
+        it('should expose eager-loaded belongsTo relations as typed models instead of LazyLink wrappers', async () => {
+            class ProjectModel extends RallyEntity {
+                static entityType = 'project';
+            }
+
+            class StoryModel extends RallyEntity {
+                static entityType = 'hierarchicalrequirement';
+                static relations = {
+                    Project: { type: 'belongsTo', entity: 'project', foreignKey: 'Project' }
+                };
+            }
+
+            const client = createMockClient({
+                get: async () => ({
+                    ObjectID: 123,
+                    Name: 'Story',
+                    Project: { _ref: '/project/1' }
+                })
+            });
+
+            const repo = new RallyRepository('hierarchicalrequirement', client, StoryModel, {
+                project: ProjectModel,
+                hierarchicalrequirement: StoryModel
+            });
+
+            repo.relationshipLoader.loadRelationships = async (entity: any) => {
+                entity._data.Project = { _ref: '/project/1', _type: 'project', Name: 'Project 1' };
+                return entity;
+            };
+
+            const entity = await repo.findOne('123', {
+                include: ['Project.Name']
+            });
+
+            expect(entity).to.be.instanceOf(StoryModel);
+            expect(entity?.Project).to.be.instanceOf(ProjectModel);
+            expect(entity?.Project).to.not.be.instanceOf(LazyLink);
+            expect(entity?.Project.Name).to.equal('Project 1');
+            expect(entity?.toJSON().Project).to.deep.equal({ _ref: '/project/1', _type: 'project', Name: 'Project 1' });
         });
     });
 });

@@ -22,6 +22,7 @@ npm install rallyorm
 - `RallyClient` for low-level API access
 - `RallyDataSource` for typed repositories
 - `RallyRepository<T>` for common read and write operations
+- eager and lazy relationship loading for Rally references
 - typed Rally models
 - helpers for Rally custom fields
 
@@ -29,7 +30,7 @@ npm install rallyorm
 
 - `RallyDataSource` is the usual entry point
 - repository getters such as `ds.userStories`, `ds.defects`, `ds.tasks`, `ds.projects` and `ds.testCases` expose typed repositories
-- `find`, `findOne`, and `save` cover the most common read and write flows
+- `find`, `findBy`, `findAllBy`, `findOne`, `findOneBy`, `count`, `exists`, and `save` cover the most common repository flows
 - `RallyClient` is available when you need lower-level control
 
 ## Quick Start
@@ -79,6 +80,80 @@ import { UserStory } from 'rallyorm';
 const repo = ds.getRepository(UserStory);
 const story = await repo.findOne('123456');
 ```
+
+### Filter With Repository Helpers
+
+`findBy` and `findAllBy` build Rally queries from plain objects when that reads better than writing raw query strings.
+
+```typescript
+const inProgressStories = await ds.userStories.findBy({
+  where: {
+    ScheduleState: 'In-Progress',
+    Project: { ObjectID: 12345 }
+  },
+  fetch: ['FormattedID', 'Name', 'ScheduleState'],
+  order: 'LastUpdateDate desc'
+});
+
+const hasOpenDefects = await ds.defects.exists({
+  State: 'Open',
+  Project: { ObjectID: 12345 }
+});
+```
+
+Supported helper operators include `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$contains`, `$in`, `$and`, and `$or`.
+
+Use `findAllBy` when you want RallyORM to page through the full result set automatically.
+
+```typescript
+const allProjectStories = await ds.userStories.findAllBy({
+  where: { Project: { ObjectID: 12345 } },
+  fetch: ['FormattedID', 'Name'],
+  pagesize: 200
+});
+```
+
+### Load Relationships
+
+You can eager-load relationships by using dot notation in `fetch` or by passing `include` explicitly.
+
+```typescript
+const stories = await ds.userStories.find({
+  fetch: ['FormattedID', 'Name', 'Project.Name', 'Owner.DisplayName'],
+  maxResults: 10
+});
+
+console.log(stories[0].Project.Name);
+console.log(stories[0].Owner.DisplayName);
+```
+
+`include` accepts either an array or a comma-delimited string.
+
+```typescript
+const story = await ds.userStories.findOne('123456', {
+  fetch: ['FormattedID', 'Name', 'Project'],
+  include: 'Project.Name,Owner.DisplayName'
+});
+```
+
+When a relationship is eager-loaded, RallyORM exposes it as the corresponding typed model when the model exists in the registry.
+
+### Lazy Relationships
+
+If a relationship is present only as a Rally `_ref` and you do not eager-load it, accessing the property returns a `LazyLink`.
+
+```typescript
+const story = await ds.userStories.findOne('123456', {
+  fetch: ['FormattedID', 'Name', 'Project']
+});
+
+const projectLink = story?.Project;
+const project = await projectLink?.load();
+
+console.log(project?.Name);
+```
+
+This is useful when you want a lightweight first read and only dereference related entities on demand.
 
 ### Write Data
 

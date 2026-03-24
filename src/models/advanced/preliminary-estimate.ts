@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * PreliminaryEstimate
+ * Preliminary estimate entity.
  *
- * T-shirt sizing or points for high-level portfolio items.
+ * Represents the coarse-grained sizing values used for high-level portfolio
+ * planning in Rally.
  */
 export class PreliminaryEstimate extends RallyEntity {
     static entityType = 'preliminaryestimate';

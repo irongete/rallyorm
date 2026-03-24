@@ -3,6 +3,9 @@ import { WorkspaceDomainObject } from './workspace-domain-object.js';
 
 /**
  * Base class for Rally artifacts.
+ *
+ * Provides the common identity, ownership, tagging, discussion, and attachment
+ * fields shared by Rally work artifacts.
  */
 export abstract class Artifact extends WorkspaceDomainObject {
     static entityType = 'artifact';

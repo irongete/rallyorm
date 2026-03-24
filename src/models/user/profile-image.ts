@@ -1,17 +1,19 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * ProfileImage
+ * Profile-image entity.
  *
- * User's profile image/avatar content.
+ * Represents the avatar or profile-image content associated with a Rally user.
  */
 export class ProfileImage extends RallyEntity {
     static entityType = 'profileimage';
 
     static fields = {
+        /**
+         * Base64-encoded image content for the user avatar.
+         */
         Content: {
             type: 'string'
-            // Base64 encoded image
         },
 
         // Metadata

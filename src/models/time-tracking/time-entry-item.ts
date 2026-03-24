@@ -1,10 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * TimeEntryItem
+ * Time-entry-item entity.
  *
- * Timesheet line item linked to a user, project, or work product.
- * Links a user, project, and work product for time tracking.
+ * Represents a timesheet line item that links a user, project, and work
+ * product for Rally time tracking.
  */
 export class TimeEntryItem extends RallyEntity {
     static entityType = 'timeentryitem';

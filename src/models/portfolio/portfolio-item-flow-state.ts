@@ -1,10 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * PortfolioItemFlowState
+ * Portfolio-item-flow-state entity.
  *
- * Defines workflow states for portfolio items (Features, Initiatives).
- * Similar to State but specifically for portfolio-level work.
+ * Represents the workflow-state configuration applied specifically to portfolio
+ * items such as features and initiatives.
  */
 export class PortfolioItemFlowState extends RallyEntity {
     static entityType = 'portfolioitemflowstate';

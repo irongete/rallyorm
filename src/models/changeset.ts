@@ -1,8 +1,10 @@
 import { RallyEntity } from './base-entity.js';
 
 /**
- * Changeset
- * Source control changeset or commit.
+ * Changeset entity.
+ *
+ * Represents a source-control changeset or commit that has been linked to Rally
+ * artifacts.
  */
 export class Changeset extends RallyEntity {
     static entityType = 'changeset';

@@ -149,8 +149,12 @@ import { DataMoveRequest } from '../models/system/data-move-request.js';
 import { AttachmentContent } from '../models/attachments/attachment-content.js';
 
 /**
- * Central data source for Rally operations.
- * Provides easy access to all entity repositories and manages client lifecycle.
+ * High-level entry point for working with Rally repositories.
+ *
+ * A datasource owns a single {@link RallyClient} instance and exposes cached,
+ * typed repositories for the entity models included in RallyORM. It is the
+ * recommended starting point for applications that want one shared client and a
+ * convenient accessor for common Rally object types.
  */
 export class RallyDataSource {
     readonly client: RallyClient;
@@ -158,7 +162,10 @@ export class RallyDataSource {
     private readonly modelRegistry: Record<string, RallyModelClass>;
 
     /**
-     * Create a data source with the provided Rally client configuration.
+     * Create a datasource backed by a new {@link RallyClient} instance.
+     *
+     * @param clientOptions Client configuration passed directly to {@link RallyClient}.
+     * @throws RallyValidationError When `clientOptions` is missing or invalid.
      */
     constructor(clientOptions: IRallyClientConfig) {
         if (!clientOptions || typeof clientOptions !== 'object') {
@@ -172,8 +179,13 @@ export class RallyDataSource {
     }
 
     /**
-     * Get a repository for the specified entity type or model class.
-     * Supports hybrid approach: getRepository(ModelClass) or getRepository('entityType')
+     * Resolve a repository by entity type string or model class.
+     *
+     * @param entityTypeOrClass Model class with an `entityType` or a Rally entity type string.
+     * @returns A cached repository bound to the requested entity type and model class.
+     * @throws RallyValidationError When the argument is neither a model class nor an entity type string.
+     * @remarks Passing a raw entity type string falls back to {@link RallyEntity} when
+     * no registered model is available.
      */
     getRepository<T extends RallyEntity>(entityTypeOrClass: string | typeof RallyEntity): RallyRepository<T> {
         let entityType: string;
@@ -211,21 +223,25 @@ export class RallyDataSource {
     }
 
     /**
-     * Clear repository cache
+     * Clear the repository cache for this datasource.
+     *
+     * Cached repositories are recreated on the next accessor call.
      */
     clearCache(): void {
         this._repositoryCache.clear();
     }
 
     /**
-     * Get the underlying Rally client
+     * Return the underlying {@link RallyClient}.
      */
     getClient(): RallyClient {
         return this.client;
     }
 
     /**
-     * Get the model registry (read-only access for internal entity use)
+     * Return the registered model map used by repository resolution.
+     *
+     * @returns A read-only view of the datasource model registry.
      */
     getModelRegistry(): Readonly<Record<string, RallyModelClass>> {
         return this.modelRegistry;

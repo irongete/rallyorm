@@ -1,9 +1,10 @@
 import { WorkspaceDomainObject } from '../base/workspace-domain-object.js';
 
 /**
- * VSMProductAnalyticsMetric
+ * Vsm-product-analytics-metric entity.
  *
- * Analytics metric associated with a VSM product.
+ * Represents an analytics metric associated with a Value Stream Management
+ * product.
  */
 export class VSMProductAnalyticsMetric extends WorkspaceDomainObject {
     static entityType = 'vsmproductanalyticsmetric';

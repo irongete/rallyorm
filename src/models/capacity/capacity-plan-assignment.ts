@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * CapacityPlanAssignment
+ * Capacity-plan-assignment entity.
  *
- * Resource or allocation assignment for a capacity plan item.
+ * Represents a resource allocation or assignment attached to a Rally capacity
+ * plan item.
  */
 export class CapacityPlanAssignment extends RallyEntity {
     static entityType = 'capacityplanassignment';

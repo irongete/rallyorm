@@ -3,6 +3,9 @@ import { Artifact } from './artifact.js';
 
 /**
  * Base class for artifacts that participate in scheduling.
+ *
+ * Adds iteration, release, workflow, estimate, and testing rollup fields shared
+ * by schedulable Rally artifacts.
  */
 export abstract class SchedulableArtifact extends Artifact {
     static entityType = 'schedulableartifact';

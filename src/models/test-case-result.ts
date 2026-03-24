@@ -1,8 +1,9 @@
 import { RallyEntity } from './base-entity.js';
 
 /**
- * TestCaseResult
- * Result of a test case execution.
+ * Test-case-result entity.
+ *
+ * Represents the outcome of a single test-case execution recorded in Rally.
  */
 export class TestCaseResult extends RallyEntity {
     static entityType = 'testcaseresult';

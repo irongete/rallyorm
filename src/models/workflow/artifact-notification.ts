@@ -1,10 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * ArtifactNotification
+ * Artifact-notification entity.
  *
- * Configuration for artifact notifications/alerts.
- * Defines notification rules and triggers for Rally artifacts.
+ * Represents the notification or alert configuration applied to Rally
+ * artifacts.
  */
 export class ArtifactNotification extends RallyEntity {
     static entityType = 'artifactnotification';

@@ -1,7 +1,10 @@
 import { Artifact } from './base/artifact.js';
 
 /**
- * Test case model.
+ * Test-case entity.
+ *
+ * Represents a Rally test case artifact used to define validation scenarios,
+ * execution expectations, and test coverage.
  */
 export class TestCase extends Artifact {
     static entityType = 'testcase';

@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * PPMConnection
+ * Ppm-connection entity.
  *
- * Connection to a project portfolio management system.
+ * Represents a connection from Rally to an external project or portfolio
+ * management system so higher-level planning data can stay aligned.
  */
 export class PPMConnection extends RallyEntity {
     static entityType = 'ppmconnection';

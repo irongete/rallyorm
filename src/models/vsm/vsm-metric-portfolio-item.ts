@@ -1,9 +1,10 @@
 import { WorkspaceDomainObject } from '../base/workspace-domain-object.js';
 
 /**
- * VSMMetricPortfolioItem
+ * Vsm-metric-portfolio-item entity.
  *
- * Link between a VSM metric and a portfolio item.
+ * Represents the link between a Value Stream Management metric and a Rally
+ * portfolio item.
  */
 export class VSMMetricPortfolioItem extends WorkspaceDomainObject {
     static entityType = 'vsmmetricportfolioitem';

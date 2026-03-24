@@ -1,7 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * Change model.
+ * Change entity.
+ *
+ * Represents a source-control file change associated with Rally SCM and audit
+ * integrations.
  */
 export class Change extends RallyEntity {
     static entityType = 'change';

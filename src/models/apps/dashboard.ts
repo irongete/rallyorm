@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * Dashboard
+ * Dashboard entity.
  *
- * User dashboard configuration containing panels.
+ * Represents a Rally dashboard configuration that groups panels, filters, and
+ * display settings for a user or scope.
  */
 export class Dashboard extends RallyEntity {
     static entityType = 'dashboard';

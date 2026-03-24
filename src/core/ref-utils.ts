@@ -1,6 +1,8 @@
 /**
- * Shared utilities for handling Rally API references
- * Extracted to avoid code duplication across repository and relationship loader
+ * Shared helpers for parsing and normalizing Rally WSAPI references.
+ *
+ * These utilities keep reference handling consistent across repositories,
+ * relationship loading, lazy links, and direct client operations.
  */
 
 /**
@@ -20,9 +22,10 @@ export function stripWsapiPrefix(path: string | null | undefined): string | null
 }
 
 /**
- * Convert an absolute WSAPI _ref to a relative path
- * e.g., https://host/slm/webservice/v2.0/hierarchicalrequirement/123 -> /hierarchicalrequirement/123
- * Leaves already-relative refs unchanged; falls back to original on parse issues.
+ * Convert an absolute WSAPI reference to a relative path.
+ *
+ * For example, `https://host/slm/webservice/v2.0/hierarchicalrequirement/123`
+ * becomes `/hierarchicalrequirement/123`.
  */
 export function toRelativeRef(ref: string | null | undefined, baseUrl: string = ''): string | null | undefined {
     if (!ref || typeof ref !== 'string') { return ref; }

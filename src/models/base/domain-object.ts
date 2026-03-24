@@ -3,6 +3,9 @@ import { PersistableObject } from './persistable-object.js';
 
 /**
  * Base class for subscription-scoped objects.
+ *
+ * Adds subscription ownership metadata to persistable Rally records that exist
+ * at the tenant level.
  */
 export abstract class DomainObject extends PersistableObject {
     static entityType = 'domainobject';

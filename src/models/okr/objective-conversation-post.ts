@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * ObjectiveConversationPost
+ * Objective-conversation-post entity.
  *
- * Discussion post associated with a specific objective.
+ * Represents a discussion post associated specifically with an OKR objective so
+ * teams can capture objective-level collaboration and commentary.
  */
 export class ObjectiveConversationPost extends RallyEntity {
     static entityType = 'objectiveconversationpost';

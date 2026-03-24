@@ -1,10 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * FlowState
+ * Flow-state entity.
  *
- * Kanban board state for work items.
- * Defines custom flow states with WIP limits and exit policies.
+ * Represents a custom flow state used by Rally workflow and Kanban boards,
+ * including optional WIP and policy metadata.
  */
 export class FlowState extends RallyEntity {
     static entityType = 'flowstate';

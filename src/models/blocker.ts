@@ -1,7 +1,10 @@
 import { WorkspaceDomainObject } from './base/workspace-domain-object.js';
 
 /**
- * Blocker model.
+ * Blocker entity.
+ *
+ * Represents a blocker record used to track dependencies, issues, or risks that
+ * impede Rally work.
  */
 export class Blocker extends WorkspaceDomainObject {
     static entityType = 'blocker';

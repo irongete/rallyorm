@@ -1,9 +1,9 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * WorkspacePermission
+ * Workspace-permission entity.
  *
- * User permission level within a specific workspace.
+ * Represents a user's permission assignment within a specific Rally workspace.
  */
 export class WorkspacePermission extends RallyEntity {
     static entityType = 'workspacepermission';

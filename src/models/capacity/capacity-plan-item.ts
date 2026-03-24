@@ -2,9 +2,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * CapacityPlanItem
+ * Capacity-plan-item entity.
  *
- * Individual item or requirement within a capacity plan.
+ * Represents an individual work item, requirement, or planning element tracked
+ * within a Rally capacity plan.
  */
 export class CapacityPlanItem extends RallyEntity {
     static entityType = 'capacityplanitem';

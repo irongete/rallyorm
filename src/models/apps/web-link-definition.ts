@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * WebLinkDefinition
+ * Web-link-definition entity.
  *
- * Custom web link definition used within the application.
+ * Represents a custom web-link definition that Rally can expose within the
+ * application interface.
  */
 export class WebLinkDefinition extends RallyEntity {
     static entityType = 'weblinkdefinition';

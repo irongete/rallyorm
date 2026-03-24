@@ -1,10 +1,10 @@
 import { WorkspaceDomainObject } from '../base/workspace-domain-object.js';
 
 /**
- * Workspace Configuration
+ * Workspace-configuration entity.
  *
- * Stores configuration settings for a Workspace, including time zone,
- * work days, date formats, and iteration schedules.
+ * Represents the workspace-level configuration settings that control time zone,
+ * work days, formatting, and scheduling defaults in Rally.
  */
 export class WorkspaceConfiguration extends WorkspaceDomainObject {
     static entityType = 'workspaceconfiguration';

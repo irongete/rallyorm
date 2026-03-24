@@ -2,10 +2,10 @@ import { type IFieldDefinition, type IRelationDefinition } from '../base-entity.
 import { Artifact } from '../base/artifact.js';
 
 /**
- * Risk
+ * Risk entity.
  *
- * Tracks project risks with impact, probability, and mitigation strategies.
- * Risks can be linked to portfolio items and work items.
+ * Represents a project or portfolio risk tracked in Rally with probability,
+ * impact, and mitigation data.
  */
 export class Risk extends Artifact {
     static entityType = 'risk';

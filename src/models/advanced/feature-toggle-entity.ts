@@ -1,9 +1,11 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * FeatureToggle
+ * Feature toggle entity.
  *
- * Feature flag used to control availability.
+ * Represents a Rally feature flag used to control the availability of specific
+ * capabilities or experiences across environments, subscriptions, or targeted
+ * rollout scenarios.
  */
 export class FeatureToggleEntity extends RallyEntity {
     static entityType = 'featuretoggle';

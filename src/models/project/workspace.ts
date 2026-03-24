@@ -1,10 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * Workspace
+ * Workspace entity.
  *
- * Top-level Rally workspace container.
- * Workspaces contain projects and define the scope for users and data.
+ * Represents a top-level Rally workspace that scopes projects, users, and
+ * related planning data.
  */
 export class Workspace extends RallyEntity {
     static entityType = 'workspace';

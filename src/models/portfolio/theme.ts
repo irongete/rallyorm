@@ -1,10 +1,10 @@
 import { PortfolioItem } from '../base/portfolio-item.js';
 
 /**
- * Theme
+ * Theme entity.
  *
- * Highest-level strategic portfolio item, above Initiatives.
- * Themes represent major strategic directions or business objectives.
+ * Represents the highest-level strategic portfolio grouping in Rally, used to
+ * organize initiatives around broad business objectives.
  */
 export class Theme extends PortfolioItem {
     static entityType = 'portfolioitem/theme';

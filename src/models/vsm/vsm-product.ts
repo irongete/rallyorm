@@ -1,9 +1,10 @@
 import { WorkspaceDomainObject } from '../base/workspace-domain-object.js';
 
 /**
- * VSMProduct
+ * Vsm-product entity.
  *
- * Value Stream Management product record.
+ * Represents a Value Stream Management product record synchronized into Rally
+ * to connect product-level metrics, outcomes, and operational signals.
  */
 export class VSMProduct extends WorkspaceDomainObject {
     static entityType = 'vsmproduct';

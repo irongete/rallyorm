@@ -1,9 +1,13 @@
 import { SchedulableArtifact } from './base/schedulable-artifact.js';
 
 /**
- * Defect
+ * Defect entity.
  *
- * Work item used to track defects in Rally.
+ * Represents a work item used to track defects in Rally.
+ *
+ * Defects extend {@link SchedulableArtifact} with lifecycle, severity,
+ * environment, build-tracking, and validation relationships that are specific
+ * to defect management workflows.
  */
 export class Defect extends SchedulableArtifact {
     static entityType = 'defect';
@@ -21,21 +25,21 @@ export class Defect extends SchedulableArtifact {
             enum: ['Submitted', 'Open', 'Fixed', 'Closed', 'None']
         },
         /**
-         * Priority level
+         * Priority used to communicate urgency and response expectations.
          */
         Priority: {
             type: 'string',
             enum: ['Resolve Immediately', 'High Attention', 'Normal', 'Low', 'None']
         },
         /**
-         * Severity level
+         * Severity used to communicate the impact of the defect.
          */
         Severity: {
             type: 'string',
             enum: ['Crash/Data Loss', 'Major Problem', 'Minor Problem', 'Cosmetic', 'None']
         },
         /**
-         * Resolution type
+         * Resolution chosen when the defect is fixed or otherwise closed.
          */
         Resolution: {
             type: 'string',
@@ -44,7 +48,7 @@ export class Defect extends SchedulableArtifact {
 
         // Environment
         /**
-         * Environment where defect was found
+         * Environment in which the issue was originally observed.
          */
         Environment: {
             type: 'string',
@@ -52,7 +56,7 @@ export class Defect extends SchedulableArtifact {
             nullable: true
         },
         /**
-         * Whether defect affects documentation
+         * Indicates whether the defect also requires documentation changes.
          */
         AffectsDoc: {
             type: 'boolean',
@@ -61,7 +65,7 @@ export class Defect extends SchedulableArtifact {
 
         // Build tracking
         /**
-         * Build where defect was found
+         * Build identifier where the defect was first found.
          */
         FoundInBuild: {
             type: 'string',
@@ -69,7 +73,7 @@ export class Defect extends SchedulableArtifact {
             nullable: true
         },
         /**
-         * Build where defect was fixed
+         * Build identifier where the fix was introduced.
          */
         FixedInBuild: {
             type: 'string',
@@ -77,7 +81,7 @@ export class Defect extends SchedulableArtifact {
             nullable: true
         },
         /**
-         * Build where fix was verified
+         * Build identifier where the fix was verified.
          */
         VerifiedInBuild: {
             type: 'string',
@@ -85,7 +89,7 @@ export class Defect extends SchedulableArtifact {
             nullable: true
         },
         /**
-         * Target build for fix
+         * Planned build target for the defect resolution.
          */
         TargetBuild: {
             type: 'string',
@@ -95,7 +99,7 @@ export class Defect extends SchedulableArtifact {
 
         // Dates
         /**
-         * Date defect was opened (ISO 8601)
+         * Timestamp when the defect was opened in Rally, in ISO 8601 format.
          */
         OpenedDate: {
             type: 'string',
@@ -103,7 +107,7 @@ export class Defect extends SchedulableArtifact {
             nullable: true
         },
         /**
-         * Date defect was closed (ISO 8601)
+         * Timestamp when the defect was closed in Rally, in ISO 8601 format.
          */
         ClosedDate: {
             type: 'string',
@@ -111,7 +115,7 @@ export class Defect extends SchedulableArtifact {
             nullable: true
         },
         /**
-         * Target date for resolution (ISO 8601)
+         * Target date for resolving the defect, in ISO 8601 format.
          */
         TargetDate: {
             type: 'string',
@@ -120,14 +124,14 @@ export class Defect extends SchedulableArtifact {
 
         // Salesforce integration
         /**
-         * Salesforce case ID
+         * External Salesforce case identifier associated with the defect.
          */
         SalesforceCaseID: {
             type: 'string',
             nullable: true
         },
         /**
-         * Salesforce case number
+         * Human-readable Salesforce case number associated with the defect.
          */
         SalesforceCaseNumber: {
             type: 'string',
@@ -136,7 +140,7 @@ export class Defect extends SchedulableArtifact {
 
         // Release notes
         /**
-         * Release note text
+         * Whether the defect should be surfaced in release-note outputs.
          */
         ReleaseNote: {
             type: 'boolean',
@@ -145,7 +149,7 @@ export class Defect extends SchedulableArtifact {
 
         // References
         /**
-         * User who submitted the defect
+         * User who originally submitted or reported the defect.
          */
         SubmittedBy: {
             type: 'ref',
@@ -153,7 +157,7 @@ export class Defect extends SchedulableArtifact {
             nullable: true
         },
         /**
-         * Associated requirement/user story
+         * User story or requirement that the defect is associated with.
          */
         Requirement: {
             type: 'ref',
@@ -161,7 +165,7 @@ export class Defect extends SchedulableArtifact {
             nullable: true
         },
         /**
-         * Associated test case
+         * Test case directly associated with the defect.
          */
         TestCase: {
             type: 'ref',
@@ -169,7 +173,7 @@ export class Defect extends SchedulableArtifact {
             nullable: true
         },
         /**
-         * Test case result that found this defect
+         * Test case result that exposed or logged this defect.
          */
         TestCaseResult: {
             type: 'ref',
@@ -179,14 +183,14 @@ export class Defect extends SchedulableArtifact {
 
         // Collections
         /**
-         * Defect suites containing this defect
+         * Defect suites that include this defect.
          */
         DefectSuites: {
             type: 'collection',
             refType: 'DefectSuite'
         },
         /**
-         * Duplicate defects
+         * Related defects marked as duplicates of this defect.
          */
         Duplicates: {
             type: 'collection',

@@ -1,9 +1,10 @@
 import { WorkspaceDomainObject } from './base/workspace-domain-object.js';
 
 /**
- * Release
+ * Release entity.
  *
- * Release record used to group work within Rally.
+ * Represents a Rally release timebox used to group work, metrics, and planning
+ * commitments at the release level.
  */
 export class Release extends WorkspaceDomainObject {
     static entityType = 'release';

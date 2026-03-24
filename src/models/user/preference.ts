@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * Preference
+ * Preference entity.
  *
- * User or project preferences/settings.
+ * Represents a stored preference or setting associated with a Rally user,
+ * project, or application context.
  */
 export class Preference extends RallyEntity {
     static entityType = 'preference';

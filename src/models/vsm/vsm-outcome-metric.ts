@@ -1,9 +1,10 @@
 import { WorkspaceDomainObject } from '../base/workspace-domain-object.js';
 
 /**
- * VSMOutcomeMetric
+ * Vsm-outcome-metric entity.
  *
- * Metric associated with a Value Stream Management outcome.
+ * Represents a metric associated with a Value Stream Management outcome in
+ * Rally, allowing outcomes to be measured through quantitative indicators.
  */
 export class VSMOutcomeMetric extends WorkspaceDomainObject {
     static entityType = 'vsmoutcomemetric';

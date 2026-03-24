@@ -1,10 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * AttributeDefinition
+ * Attribute-definition entity.
  *
- * Rally attribute definition and field schema metadata.
- * Extends RallyEntity directly without a separate metadata base class.
+ * Represents Rally attribute schema metadata, including field shape,
+ * constraints, and allowed values for a type definition.
  */
 export class AttributeDefinition extends RallyEntity {
     static entityType = 'attributedefinition';

@@ -3,6 +3,9 @@ import { DomainObject } from './domain-object.js';
 
 /**
  * Base class for workspace-scoped objects.
+ *
+ * Adds workspace ownership metadata to subscription-scoped Rally domain
+ * objects.
  */
 export abstract class WorkspaceDomainObject extends DomainObject {
     static entityType = 'workspacedomainobject';

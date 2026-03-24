@@ -1,7 +1,10 @@
 import { RallyEntity } from './base-entity.js';
 
 /**
- * Build model.
+ * Build entity.
+ *
+ * Represents a build record synchronized into Rally from an external build or
+ * CI system.
  */
 export class Build extends RallyEntity {
     static entityType = 'build';

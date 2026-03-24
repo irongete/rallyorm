@@ -1,7 +1,10 @@
 import { RallyEntity } from './base-entity.js';
 
 /**
- * Milestone model.
+ * Milestone entity.
+ *
+ * Represents a milestone used to mark significant checkpoints across Rally
+ * artifacts and planning timelines.
  */
 export class Milestone extends RallyEntity {
     static entityType = 'milestone';

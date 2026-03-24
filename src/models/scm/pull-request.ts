@@ -1,10 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * Pull Request
+ * Pull-request entity.
  *
- * Connects Rally artifacts to GitHub/GitLab/Bitbucket pull requests.
- * Pull request linked from an external SCM system.
+ * Represents a pull request from an external SCM system that is linked back to
+ * Rally artifacts.
  */
 export class PullRequest extends RallyEntity {
     static entityType = 'pullrequest';

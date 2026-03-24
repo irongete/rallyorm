@@ -1,7 +1,10 @@
 import { WorkspaceDomainObject } from './base/workspace-domain-object.js';
 
 /**
- * Connection model.
+ * Connection entity.
+ *
+ * Represents a workspace-scoped connection record linking Rally artifacts to
+ * related external or internal references.
  */
 export class Connection extends WorkspaceDomainObject {
     static entityType = 'connection';

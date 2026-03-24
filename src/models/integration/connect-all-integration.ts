@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * ConnectAllIntegration
+ * Connect-all-integration entity.
  *
- * Configuration record for ConnectAll integration.
+ * Represents the configuration record for a ConnectAll integration linked to
+ * Rally so external systems can exchange synchronized work and planning data.
  */
 export class ConnectAllIntegration extends RallyEntity {
     static entityType = 'connectallintegration';

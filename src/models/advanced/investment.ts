@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * Investment
+ * Investment entity.
  *
- * Strategic investment category or funding stream.
+ * Represents a strategic investment category or funding stream used in Rally
+ * planning data.
  */
 export class Investment extends RallyEntity {
     static entityType = 'investment';

@@ -27,7 +27,10 @@ interface ICollectionField {
 }
 
 /**
- * Handles loading of entity relationships
+ * Relationship loading service for Rally entities.
+ *
+ * This helper resolves eager-loaded include paths, batches related-entity
+ * lookups, and caches intermediate results while traversing relationship trees.
  */
 export class RelationshipLoader {
     client: RallyClient;

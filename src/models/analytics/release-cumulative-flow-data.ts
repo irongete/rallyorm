@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * ReleaseCumulativeFlowData
+ * Release cumulative-flow-data entity.
  *
- * Analytics data for Release Cumulative Flow Diagrams (CFD).
+ * Represents the historical analytics points used to render cumulative flow
+ * diagrams for a Rally release.
  */
 export class ReleaseCumulativeFlowData extends RallyEntity {
     static entityType = 'releasecumulativeflowdata';

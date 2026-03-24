@@ -1,9 +1,11 @@
 import { WorkspaceDomainObject } from '../base/workspace-domain-object.js';
 
 /**
- * VSMComponent
+ * Vsm-component entity.
  *
- * Value Stream Management component record.
+ * Represents a Value Stream Management component record synchronized into
+ * Rally so delivery and measurement data can be attached below the product
+ * level.
  */
 export class VSMComponent extends WorkspaceDomainObject {
     static entityType = 'vsmcomponent';

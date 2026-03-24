@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * Panel
+ * Panel entity.
  *
- * Visual panel or widget displayed on a dashboard.
+ * Represents a visual dashboard widget or panel displayed within a Rally
+ * dashboard.
  */
 export class Panel extends RallyEntity {
     static entityType = 'panel';

@@ -1,9 +1,10 @@
 import { WorkspaceDomainObject } from './base/workspace-domain-object.js';
 
 /**
- * Iteration
+ * Iteration entity.
  *
- * Iteration record used to plan sprint work in Rally.
+ * Represents a Rally iteration or sprint used to plan and track time-boxed work
+ * delivery.
  */
 export class Iteration extends WorkspaceDomainObject {
     static entityType = 'iteration';

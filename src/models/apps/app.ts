@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * App
+ * App entity.
  *
- * Installed application or endpoint in Rally.
+ * Represents an installed application, integration endpoint, or app artifact
+ * configured within Rally.
  */
 export class App extends RallyEntity {
     static entityType = 'app';

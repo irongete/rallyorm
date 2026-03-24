@@ -1,5 +1,5 @@
 /**
- * Base model exports.
+ * Public exports for the shared Rally model base classes.
  */
 import { Artifact } from './artifact.js';
 import { DomainObject } from './domain-object.js';

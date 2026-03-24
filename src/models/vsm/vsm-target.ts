@@ -1,9 +1,10 @@
 import { WorkspaceDomainObject } from '../base/workspace-domain-object.js';
 
 /**
- * VSMTarget
+ * Vsm-target entity.
  *
- * Value Stream Management target definition.
+ * Represents a Value Stream Management target definition synchronized into
+ * Rally so desired thresholds or goals can be compared with actual measures.
  */
 export class VSMTarget extends WorkspaceDomainObject {
     static entityType = 'vsmtarget';

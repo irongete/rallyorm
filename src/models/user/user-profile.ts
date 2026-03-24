@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * UserProfile
+ * User-profile entity.
  *
- * User profile settings and preferences for Rally users.
+ * Represents the profile-level settings and preferences stored for a Rally
+ * user.
  */
 export class UserProfile extends RallyEntity {
     static entityType = 'userprofile';

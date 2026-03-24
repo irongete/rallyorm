@@ -1,9 +1,10 @@
 import { WorkspaceDomainObject } from '../base/workspace-domain-object.js';
 
 /**
- * VSMMeasure
+ * Vsm-measure entity.
  *
- * Value Stream Management measurement record.
+ * Represents a Value Stream Management measurement record synchronized into
+ * Rally to capture observed values and supporting telemetry for VSM reporting.
  */
 export class VSMMeasure extends WorkspaceDomainObject {
     static entityType = 'vsmmeasure';

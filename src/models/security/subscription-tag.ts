@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * SubscriptionTag
+ * Subscription-tag entity.
  *
- * Tag defined at the subscription level.
+ * Represents a tag definition managed at the Rally subscription level for reuse
+ * across broader tenant-wide contexts.
  */
 export class SubscriptionTag extends RallyEntity {
     static entityType = 'subscriptiontag';

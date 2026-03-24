@@ -1,12 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * Subscription
+ * Subscription entity.
  *
- * Rally subscription configuration - the top-level tenant/organization.
- * Contains subscription-wide settings, security policies, and feature flags.
- *
- * **Warning**: This model has 92 fields. Only implementing most critical ones.
+ * Represents the top-level Rally subscription or tenant configuration,
+ * including organization-wide settings, policies, and feature flags.
  */
 export class Subscription extends RallyEntity {
     static entityType = 'subscription';

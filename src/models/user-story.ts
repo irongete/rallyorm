@@ -4,6 +4,10 @@ import { SchedulableArtifact } from './base/schedulable-artifact.js';
  * HierarchicalRequirement (User Story)
  *
  * User story record used to plan and track functional work in Rally.
+ *
+ * This model extends {@link SchedulableArtifact} with hierarchy, portfolio,
+ * dependency, defect, and risk relationships that are specific to user-story
+ * planning.
  */
 export class UserStory extends SchedulableArtifact {
     static entityType = 'hierarchicalrequirement';
@@ -14,21 +18,21 @@ export class UserStory extends SchedulableArtifact {
 
         // Hierarchy
         /**
-         * Whether this story has a parent story
+         * Indicates whether this story is nested under another user story.
          */
         HasParent: {
             type: 'boolean',
             readOnly: true
         },
         /**
-         * Number of direct child stories
+         * Number of immediate child stories directly nested below this story.
          */
         DirectChildrenCount: {
             type: 'integer',
             readOnly: true
         },
         /**
-         * Parent user story reference
+         * Parent user story reference used to build the story hierarchy.
          */
         Parent: {
             type: 'ref',
@@ -36,14 +40,14 @@ export class UserStory extends SchedulableArtifact {
             nullable: true
         },
         /**
-         * Child user stories collection
+         * Child user stories that descend directly from this story.
          */
         Children: {
             type: 'collection',
             refType: 'HierarchicalRequirement'
         },
         /**
-         * Unified parent (can be story or portfolio item)
+         * Unified parent reference that may point to either a story or a portfolio item.
          */
         UnifiedParent: {
             type: 'ref',
@@ -53,7 +57,7 @@ export class UserStory extends SchedulableArtifact {
 
         // Portfolio
         /**
-         * Parent feature (portfolio item)
+         * Parent feature used to roll this story up into portfolio planning.
          */
         Feature: {
             type: 'ref',
@@ -63,14 +67,14 @@ export class UserStory extends SchedulableArtifact {
 
         // Dependencies
         /**
-         * Predecessor stories
+         * Predecessor dependency records that must complete before this story.
          */
         Predecessors: {
             type: 'collection',
             refType: 'HierarchicalRequirementPredecessorRelationship'
         },
         /**
-         * Successor stories
+         * Successor dependency records that depend on this story.
          */
         Successors: {
             type: 'collection',
@@ -79,14 +83,14 @@ export class UserStory extends SchedulableArtifact {
 
         // Defects
         /**
-         * Associated defects
+         * Defects linked back to this story as the affected requirement.
          */
         Defects: {
             type: 'collection',
             refType: 'Defect'
         },
         /**
-         * Defect status summary
+         * Read-only summary of the defect status rollup for this story.
          */
         DefectStatus: {
             type: 'string',
@@ -96,7 +100,7 @@ export class UserStory extends SchedulableArtifact {
 
         // Risks
         /**
-         * Associated risks
+         * Risks associated with this story as an artifact.
          */
         Risks: {
             type: 'collection',
@@ -105,7 +109,7 @@ export class UserStory extends SchedulableArtifact {
 
         // Testing metrics
         /**
-         * Total direct test cases count
+         * Total number of test cases attached directly to this story.
          */
         TotalDirectTestCaseCount: {
             type: 'integer',
@@ -113,7 +117,7 @@ export class UserStory extends SchedulableArtifact {
             nullable: true
         },
         /**
-         * Direct passing test case count
+         * Number of directly attached test cases currently passing.
          */
         DirectPassingTestCaseCount: {
             type: 'integer',

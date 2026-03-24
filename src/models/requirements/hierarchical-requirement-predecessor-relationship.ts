@@ -1,10 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * HierarchicalRequirementPredecessorRelationship
+ * Hierarchical-requirement-predecessor-relationship entity.
  *
- * Defines dependency relationships between User Stories.
- * Establishes predecessor-successor links for managing story dependencies.
+ * Represents a dependency link between user stories so Rally can model story
+ * predecessors and successors.
  */
 export class HierarchicalRequirementPredecessorRelationship extends RallyEntity {
     static entityType = 'hierarchicalrequirementpredecessorrelationship';

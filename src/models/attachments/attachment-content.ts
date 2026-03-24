@@ -1,11 +1,11 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * AttachmentContent
+ * Attachment-content entity.
  *
- * Stores the binary content for an Attachment.
- * The Attachment entity has metadata, while AttachmentContent holds the actual file data.
- * Content is usually Base64 encoded.
+ * Represents the binary payload for an attachment record. The companion
+ * attachment entity stores metadata, while this entity carries the encoded file
+ * content itself.
  */
 export class AttachmentContent extends RallyEntity {
     static entityType = 'attachmentcontent';

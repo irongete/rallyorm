@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * AllowedAttributeValue
+ * Allowed-attribute-value entity.
  *
- * Valid value for a constrained attribute or enum field.
+ * Represents a valid value that Rally exposes for a constrained attribute or
+ * enum-like field.
  */
 export class AllowedAttributeValue extends RallyEntity {
     static entityType = 'allowedattributevalue';

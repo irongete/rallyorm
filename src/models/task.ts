@@ -1,12 +1,13 @@
 import { Artifact } from './base/artifact.js';
 
 /**
- * Task
+ * Task entity.
  *
- * Smallest unit of work in Rally. Tasks break down user stories
- * and defects into concrete work items.
- * Note: Task extends Artifact directly, NOT SchedulableArtifact.
- * It uses `State` (Defined/In-Progress/Completed) instead of `ScheduleState`.
+ * Represents the smallest unit of planned work in Rally, typically used to
+ * break down a story or defect into concrete execution steps.
+ *
+ * @remarks Task extends {@link Artifact} directly rather than
+ * {@link SchedulableArtifact}, and uses `State` instead of `ScheduleState`.
  */
 export class Task extends Artifact {
     static entityType = 'task';

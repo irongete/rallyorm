@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * ExpertiseDemand
+ * Expertise-demand entity.
  *
- * Demand for a specific expertise required by a portfolio item.
+ * Represents the demand for a specific expertise needed by a portfolio item or
+ * planning record.
  */
 export class ExpertiseDemand extends RallyEntity {
     static entityType = 'expertisedemand';

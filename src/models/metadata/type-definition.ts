@@ -1,10 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * TypeDefinition
+ * Type-definition entity.
  *
- * Rally type definition and schema metadata.
- * Extends RallyEntity directly without a separate metadata base class.
+ * Represents Rally type schema metadata, including inheritance, capabilities,
+ * and attribute definitions for a model type.
  */
 export class TypeDefinition extends RallyEntity {
     static entityType = 'typedefinition';

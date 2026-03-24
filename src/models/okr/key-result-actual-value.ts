@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * KeyResultActualValue
+ * Key-result-actual-value entity.
  *
- * Recorded actual value for a key result at a point in time.
+ * Represents a recorded actual value for a key result at a specific point in
+ * time so progress can be tracked historically against targets.
  */
 export class KeyResultActualValue extends RallyEntity {
     static entityType = 'keyresultactualvalue';

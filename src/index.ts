@@ -1,5 +1,10 @@
 /**
- * RallyORM public exports.
+ * Public entry point for RallyORM.
+ *
+ * This module re-exports the primary client, repository, datasource, utility
+ * helpers, and model classes that make up the published package surface.
+ * Consumers typically import from this file when building typed Rally data
+ * access layers or extending built-in models with custom fields.
  */
 
 // Errors

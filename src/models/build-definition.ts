@@ -1,8 +1,10 @@
 import { RallyEntity } from './base-entity.js';
 
 /**
- * BuildDefinition
- * Build configuration used by Rally integrations.
+ * Build-definition entity.
+ *
+ * Represents the build configuration metadata that Rally uses when integrating
+ * with external build systems.
  */
 export class BuildDefinition extends RallyEntity {
     static entityType = 'builddefinition';

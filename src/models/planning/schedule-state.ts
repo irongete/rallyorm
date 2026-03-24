@@ -1,12 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * ScheduleState
+ * Schedule-state entity.
  *
- * Defines the available schedule states for schedulable artifacts.
- * Standard values: "Defined", "In-Progress", "Completed", "Accepted"
- *
- * ScheduleState is a workspace-level configuration that can be customized.
+ * Represents the schedule-state configuration available to schedulable Rally
+ * artifacts, including the standard workflow values used in planning.
  */
 export class ScheduleState extends RallyEntity {
     static entityType = 'schedulestate';

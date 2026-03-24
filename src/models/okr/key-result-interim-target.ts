@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * KeyResultInterimTarget
+ * Key-result-interim-target entity.
  *
- * Interim target value used to track key result progress.
+ * Represents an interim target value used to measure progress toward a key
+ * result before the final target date is reached.
  */
 export class KeyResultInterimTarget extends RallyEntity {
     static entityType = 'keyresultinterimtarget';

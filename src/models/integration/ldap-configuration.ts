@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * LdapConfiguration
+ * Ldap-configuration entity.
  *
- * Configuration settings for LDAP authentication.
+ * Represents the LDAP authentication configuration stored for a Rally
+ * environment.
  */
 export class LdapConfiguration extends RallyEntity {
     static entityType = 'ldapconfiguration';

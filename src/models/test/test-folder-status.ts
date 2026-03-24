@@ -1,10 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * TestFolderStatus
+ * Test-folder-status entity.
  *
- * Aggregates test execution statistics for a TestFolder.
- * Provides rollup counts of test results (passed, failed, no result, etc.)
+ * Represents the aggregated execution metrics and rollup counts for a Rally
+ * test folder.
  */
 export class TestFolderStatus extends RallyEntity {
     static entityType = 'testfolderstatus';

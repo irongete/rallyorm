@@ -1,10 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * RevisionHistory
+ * Revision-history entity.
  *
- * Container for all revisions of a single artifact.
- * Provides the audit trail and change history for an artifact.
+ * Represents the revision-history container that groups every revision recorded
+ * for a single Rally artifact.
  */
 export class RevisionHistory extends RallyEntity {
     static entityType = 'revisionhistory';

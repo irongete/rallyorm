@@ -1,9 +1,10 @@
 import { RallyEntity } from './base-entity.js';
 
 /**
- * User
+ * User entity.
  *
- * Rally user record, including profile details, account state, and team membership.
+ * Represents a Rally user record, including identity, account state, profile,
+ * and team membership information.
  */
 export class User extends RallyEntity {
     static entityType = 'user';

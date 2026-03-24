@@ -1,7 +1,10 @@
 import { RallyEntity } from './base-entity.js';
 
 /**
- * Tag model.
+ * Tag entity.
+ *
+ * Represents a Rally tag that can be associated with artifacts for labeling and
+ * classification.
  */
 export class Tag extends RallyEntity {
     static entityType = 'tag';

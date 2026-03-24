@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * TimeEntryValue
+ * Time-entry-value entity.
  *
- * Hours recorded for a specific date on a time entry item.
+ * Represents the hours recorded for a specific date on a Rally time-entry
+ * item.
  */
 export class TimeEntryValue extends RallyEntity {
     static entityType = 'timeentryvalue';

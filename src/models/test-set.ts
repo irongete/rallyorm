@@ -1,9 +1,10 @@
 import { SchedulableArtifact } from './base/schedulable-artifact.js';
 
 /**
- * TestSet
+ * Test-set entity.
  *
- * A container for TestCases scheduled for execution within an Iteration or Release.
+ * Represents a schedulable grouping of test cases that Rally can execute within
+ * an iteration or release context.
  */
 export class TestSet extends SchedulableArtifact {
     static entityType = 'testset';

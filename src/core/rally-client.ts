@@ -20,6 +20,12 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { toAbsoluteRef, toRelativeRef } from './ref-utils.js';
 
+/**
+ * Queue configuration forwarded to the internal request scheduler.
+ *
+ * Use these options to control concurrency and timeout behaviour for all Rally
+ * requests issued by a client instance.
+ */
 export interface IQueueOptions {
     concurrency?: number;
     timeout?: number;
@@ -27,12 +33,18 @@ export interface IQueueOptions {
     autoStart?: boolean;
 }
 
+/**
+ * Options that tune eager and inverse relationship loading.
+ */
 export interface IRelationshipLoaderOptions {
     maxDepth?: number;
     maxCacheEntries?: number;
     inverseQueryChunkSize?: number;
 }
 
+/**
+ * Configuration used to construct a {@link RallyClient}.
+ */
 export interface IRallyClientConfig {
     apiKey: string;
     workspace?: string;
@@ -54,6 +66,9 @@ export interface IRallyClientConfig {
     fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
 
+/**
+ * Query options for standard WSAPI entity queries.
+ */
 export interface IQueryOptions {
     query?: string;
     fetch?: string | string[];
@@ -64,6 +79,9 @@ export interface IQueryOptions {
     timeoutMs?: number;
 }
 
+/**
+ * Query options for collection references returned by Rally.
+ */
 export interface ICollectionQueryOptions {
     fetch?: string | string[];
     start?: number;
@@ -72,6 +90,9 @@ export interface ICollectionQueryOptions {
     timeoutMs?: number;
 }
 
+/**
+ * Effective write permissions derived from client configuration.
+ */
 export interface IWritePermissions {
     readOnly: boolean;
     allowCreate: boolean;
@@ -79,6 +100,9 @@ export interface IWritePermissions {
     allowDelete: boolean;
 }
 
+/**
+ * Logging contract used by {@link RallyClient}.
+ */
 export interface IRallyLogger {
     debug: (...args: any[]) => void;
     info: (...args: any[]) => void;
@@ -135,8 +159,12 @@ const PACKAGE_VERSION_CANDIDATE_PATHS = (() => {
 let cachedPackageVersion: string | null = null;
 
 /**
- * Rally API Client with repository pattern interface
- * Provides robust HTTP client with retry logic, rate limiting, and error handling
+ * Low-level Rally WSAPI client used by repositories and datasources.
+ *
+ * The client centralizes authentication, retries, request queueing, timeout
+ * handling, and write-permission enforcement. Most consumers interact with it
+ * indirectly through {@link RallyDataSource} or {@link RallyRepository}, but it
+ * can also be used directly for advanced query and collection operations.
  */
 export class RallyClient {
     readonly apiKey: string;
@@ -162,7 +190,11 @@ export class RallyClient {
     private readonly _clientOptions: IRallyClientConfig;
 
     /**
-     * Create a new Rally client instance
+     * Create a new Rally client instance.
+     *
+     * @param options Client configuration including authentication, workspace
+     * context, retry policy, logging, and write permissions.
+     * @throws RallyValidationError When required configuration is missing or invalid.
      */
     constructor(options: IRallyClientConfig) {
         this._validateOptions(options);
@@ -246,7 +278,10 @@ export class RallyClient {
     }
 
     /**
-     * Get current write permissions status
+     * Return the effective write permissions for this client.
+     *
+     * @returns A normalized permission snapshot derived from `readOnly` and the
+     * individual create, update, and delete flags.
      */
     getWritePermissions(): IWritePermissions {
         return {
@@ -257,6 +292,11 @@ export class RallyClient {
         };
     }
 
+    /**
+     * Return the relationship loader options configured for this client.
+     *
+     * @returns A shallow copy of the current relationship-loader settings.
+     */
     getRelationshipLoaderOptions(): IRelationshipLoaderOptions {
         return {
             ...(this._clientOptions.relationshipLoaderOptions || {})
@@ -298,23 +338,30 @@ export class RallyClient {
 
     /**
      * Replace the active logger at runtime.
-     * Throws `RallyValidationError` if the provided value does not implement `IRallyLogger`.
+     *
+     * @param logger Logger implementation that satisfies {@link IRallyLogger}.
+     * @throws RallyValidationError When `logger` does not implement the required methods.
      */
     setLogger(logger: IRallyLogger): void {
         this.logger = logger;
     }
 
     /**
-     * Replace the active fetch function at runtime (e.g. for testing or custom implementations).
-     * Throws `RallyValidationError` if the provided value is not a function.
+     * Replace the active fetch implementation at runtime.
+     *
+     * @param fetchFn Fetch-compatible function used for all subsequent HTTP requests.
+     * @throws RallyValidationError When `fetchFn` is not a function.
      */
     setFetch(fetchFn: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>): void {
         this.fetch = fetchFn;
     }
 
     /**
-     * Change the log level at runtime, rebuilding the built-in console logger.
-     * Has no effect when a custom logger was provided at construction time via `options.logger`.
+     * Change the built-in logger level at runtime.
+     *
+     * @param level New minimum log level for the built-in logger.
+     * @remarks This only affects the built-in logger. Custom loggers supplied via
+     * `options.logger` keep full control over their own filtering.
      */
     setLogLevel(level: 'silent' | 'error' | 'warn' | 'info' | 'debug'): void {
         this.logLevel = level;
@@ -542,7 +589,14 @@ export class RallyClient {
     }
 
     /**
-     * Query Rally entities with pagination
+     * Query Rally entities using standard WSAPI pagination.
+     *
+     * @param type Rally entity type such as `defect`, `project`, or `hierarchicalrequirement`.
+     * @param options Query text and paging options forwarded to WSAPI.
+     * @returns The current page of matching raw Rally records.
+     * @throws RallyValidationError When `type`, `start`, or `pagesize` are invalid.
+     * @throws RallyNetworkError When the request fails at the HTTP or network layer.
+     * @throws RallyTimeoutError When the request exceeds the configured timeout.
      */
     async query<T = unknown>(type: string, { query, fetch, start = 1, pagesize = 200, order }: IQueryOptions = {}): Promise<T[]> {
         if (!type || typeof type !== 'string') {
@@ -562,7 +616,12 @@ export class RallyClient {
     }
 
     /**
-     * Get only the total count of entities matching a query
+     * Return only the total number of entities matching a query.
+     *
+     * @param type Rally entity type to count.
+     * @param options Query options. Only `query` is used for the count request.
+     * @returns Total number of matching records reported by Rally.
+     * @throws RallyValidationError When `type` is invalid.
      */
     async queryCount(type: string, { query }: IQueryOptions = {}): Promise<number> {
         if (!type || typeof type !== 'string') {
@@ -579,7 +638,13 @@ export class RallyClient {
     }
 
     /**
-     * Query all Rally entities (handles pagination automatically)
+     * Query all matching Rally entities, automatically traversing additional pages.
+     *
+     * @param type Rally entity type to query.
+     * @param options Query, ordering, paging, and optional result-limiting options.
+     * @returns Matching records accumulated across all fetched pages.
+     * @throws RallyValidationError When `type` or paging inputs are invalid.
+     * @throws RallyTimeoutError When the overall operation exceeds `timeoutMs`.
      */
     async queryAll<T = unknown>(type: string, { query, fetch, order, pagesize = 200, maxResults, timeoutMs, start = 1 }: IQueryOptions = {}): Promise<T[]> {
         if (!type || typeof type !== 'string') {
@@ -631,7 +696,13 @@ export class RallyClient {
     }
 
     /**
-     * Get a single Rally entity by ObjectID
+     * Fetch a single Rally entity by ObjectID.
+     *
+     * @param type Rally entity type to load.
+     * @param objectId Rally ObjectID for the requested record.
+     * @param options Optional field selection for the read request.
+     * @returns The raw Rally entity payload.
+     * @throws RallyValidationError When `type` or `objectId` are invalid.
      */
     async get<T = unknown>(type: string, objectId: string | number, { fetch }: Pick<IQueryOptions, 'fetch'> = {}): Promise<T> {
         if (!type || typeof type !== 'string') {
@@ -651,7 +722,12 @@ export class RallyClient {
     }
 
     /**
-     * Query a Rally collection reference returned by WSAPI.
+     * Query a collection reference returned by Rally WSAPI.
+     *
+     * @param collectionRef Absolute or relative Rally collection reference.
+     * @param options Field selection and paging options for the collection request.
+     * @returns The current page of records from the target collection.
+     * @throws RallyValidationError When `collectionRef` or paging inputs are invalid.
      */
     async queryCollection<T = unknown>(collectionRef: string, { fetch, start = 1, pagesize = 200 }: ICollectionQueryOptions = {}): Promise<T[]> {
         if (!collectionRef || typeof collectionRef !== 'string') {
@@ -671,7 +747,13 @@ export class RallyClient {
     }
 
     /**
-     * Query all items from a Rally collection reference.
+     * Query every item from a Rally collection reference.
+     *
+     * @param collectionRef Absolute or relative Rally collection reference.
+     * @param options Field selection, paging, and optional max-result controls.
+     * @returns Records accumulated from every fetched page in the collection.
+     * @throws RallyValidationError When `collectionRef` or paging inputs are invalid.
+     * @throws RallyTimeoutError When the overall operation exceeds `timeoutMs`.
      */
     async queryCollectionAll<T = unknown>(collectionRef: string, { fetch, start = 1, pagesize = 200, maxResults, timeoutMs }: ICollectionQueryOptions = {}): Promise<T[]> {
         if (!collectionRef || typeof collectionRef !== 'string') {
@@ -786,7 +868,14 @@ export class RallyClient {
     }
 
     /**
-     * Create a new Rally entity
+     * Create a new Rally entity.
+     *
+     * @param type Rally entity type to create.
+     * @param payload Field payload sent to WSAPI.
+     * @returns The created Rally entity payload.
+     * @throws RallyPermissionError When create operations are disabled.
+     * @throws RallyValidationError When `type` or `payload` are invalid.
+     * @throws RallyOperationError When Rally rejects the operation.
      */
     async create<T = unknown>(type: string, payload: any): Promise<T> {
         this._checkWritePermission('create', type);
@@ -820,7 +909,15 @@ export class RallyClient {
     }
 
     /**
-     * Update an existing Rally entity
+     * Update an existing Rally entity.
+     *
+     * @param type Rally entity type to update.
+     * @param objectId Rally ObjectID for the target record.
+     * @param payload Partial field payload to persist.
+     * @returns The updated Rally entity payload.
+     * @throws RallyPermissionError When update operations are disabled.
+     * @throws RallyValidationError When required inputs are missing or invalid.
+     * @throws RallyOperationError When Rally rejects the operation.
      */
     async update<T = unknown>(type: string, objectId: string | number, payload: any): Promise<T> {
         this._checkWritePermission('update', type);
@@ -857,7 +954,14 @@ export class RallyClient {
     }
 
     /**
-     * Delete a Rally entity
+     * Delete a Rally entity by ObjectID.
+     *
+     * @param type Rally entity type to delete.
+     * @param objectId Rally ObjectID for the record to remove.
+     * @returns `true` when Rally confirms the delete operation.
+     * @throws RallyPermissionError When delete operations are disabled.
+     * @throws RallyValidationError When required inputs are missing or invalid.
+     * @throws RallyOperationError When Rally rejects the operation.
      */
     async delete(type: string, objectId: string | number): Promise<boolean> {
         this._checkWritePermission('delete', type);

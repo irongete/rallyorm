@@ -2,6 +2,9 @@ import type { IFieldDefinition, IRelationDefinition, RallyEntity } from './base-
 
 type RallyModelConstructor = abstract new (...args: any[]) => RallyEntity;
 
+/**
+ * Constructor contract used by the central Rally model registry.
+ */
 export type RallyModelClass = RallyModelConstructor & {
     entityType: string | null;
     prototype: RallyEntity;
@@ -122,6 +125,12 @@ import { ArtifactNotification } from './workflow/artifact-notification.js';
 import { ConversationPost } from './workflow/conversation-post.js';
 import { FlowState } from './workflow/flow-state.js';
 
+/**
+ * Ordered list of all model constructors registered by RallyORM.
+ *
+ * This array is used to build the entity-type lookup registry and preserve a
+ * single authoritative inventory of the shipped model classes.
+ */
 export const MODEL_CLASSES: RallyModelClass[] = [
     PersistableObject,
     DomainObject,
@@ -236,6 +245,12 @@ export const MODEL_CLASSES: RallyModelClass[] = [
     FlowState
 ];
 
+/**
+ * Lookup map from normalized Rally entity type to model constructor.
+ *
+ * Repositories, datasources, and relationship loaders use this registry to
+ * resolve typed model classes from entity-type strings.
+ */
 export const MODEL_REGISTRY: Record<string, RallyModelClass> = MODEL_CLASSES.reduce((registry, ModelClass) => {
     if (typeof ModelClass.entityType === 'string' && ModelClass.entityType.length > 0) {
         registry[ModelClass.entityType] = ModelClass;

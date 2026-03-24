@@ -1,9 +1,11 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * ExternalContribution
+ * External contribution entity.
  *
- * Contribution or work item originating from an external system.
+ * Represents a contribution or work item synchronized into Rally from an
+ * external system so planning data can reference work originating outside the
+ * native Rally workflow.
  */
 export class ExternalContribution extends RallyEntity {
     static entityType = 'externalcontribution';

@@ -6,6 +6,12 @@ import { RallyEntity } from '../models/base-entity.js';
 import type { RallyModelClass } from '../models/registry.js';
 import { RallyValidationError, RallyOperationError } from './errors.js';
 
+/**
+ * Repository-level query options.
+ *
+ * Extends the low-level client query options with relationship eager-loading
+ * and object-based where-clause construction helpers.
+ */
 export interface IFindOptions extends IQueryOptions {
     include?: string | string[];
     where?: Record<string, unknown>;
@@ -26,8 +32,11 @@ interface IRallyTagData {
 }
 
 /**
- * Repository pattern implementation for Rally entities
- * Provides repository pattern interface for CRUD operations
+ * Repository abstraction for a single Rally entity type.
+ *
+ * Repositories provide typed CRUD operations, query helpers, entity wrapping,
+ * and optional relationship eager loading on top of the lower-level
+ * {@link RallyClient}.
  */
 export class RallyRepository<T extends RallyEntity = any> {
     entityType: string;
@@ -38,7 +47,14 @@ export class RallyRepository<T extends RallyEntity = any> {
     relationshipLoader: RelationshipLoader;
 
     /**
-     * Create a new Rally repository
+     * Create a repository for one Rally entity type.
+     *
+     * @param entityType Rally entity type handled by this repository.
+     * @param rallyClient Client used for all WSAPI requests.
+     * @param modelClass Optional model class used to wrap raw Rally records.
+     * @param modelRegistry Model registry used for relation resolution.
+     * @param dataSource Owning datasource when the repository is created by {@link RallyDataSource}.
+     * @throws RallyValidationError When `entityType` or `rallyClient` are invalid.
      */
     constructor(
         entityType: string,
@@ -68,7 +84,10 @@ export class RallyRepository<T extends RallyEntity = any> {
     }
 
     /**
-     * Find entities with basic options
+     * Find entities using direct query options.
+     *
+     * @param options Query, fetch, pagination, and relationship include options.
+     * @returns Matching entities wrapped in the configured model class.
      */
     async find(options: IFindOptions = {}): Promise<T[]> {
         const normalized = this._normalizeOptions(options);
@@ -92,7 +111,10 @@ export class RallyRepository<T extends RallyEntity = any> {
     }
 
     /**
-     * Find entities matching specific criteria
+     * Find entities matching an object-based `where` clause.
+     *
+     * @param options Repository query options including `where` filters and optional includes.
+     * @returns Matching entities wrapped in the configured model class.
      */
     async findBy(options: IFindOptions = {}): Promise<T[]> {
         const { where = {}, ...otherOptions } = options;
@@ -124,7 +146,10 @@ export class RallyRepository<T extends RallyEntity = any> {
     }
 
     /**
-     * Find all entities matching criteria (handles pagination automatically)
+     * Find all entities matching a filter, traversing every result page.
+     *
+     * @param options Repository query options including `where`, ordering, and includes.
+     * @returns Every matching entity up to the optional `maxResults` limit.
      */
     async findAllBy(options: IFindOptions = {}): Promise<T[]> {
         const { where = {}, ...otherOptions } = options;
@@ -156,7 +181,11 @@ export class RallyRepository<T extends RallyEntity = any> {
     }
 
     /**
-     * Find a single entity by ID or criteria
+     * Find a single entity by ObjectID or by filter criteria.
+     *
+     * @param idOrWhere Either a Rally ObjectID or a `where` object.
+     * @param options Additional query options used when resolving the entity.
+     * @returns The matching entity, or `null` when no record is found.
      */
     async findOne(idOrWhere: string | number | Record<string, unknown>, options: IFindOptions = {}): Promise<T | null> {
         let entity: T | null;
@@ -191,7 +220,10 @@ export class RallyRepository<T extends RallyEntity = any> {
     }
 
     /**
-     * Find a single entity matching criteria
+     * Find the first entity matching the provided criteria.
+     *
+     * @param options Repository query options with a `where` clause.
+     * @returns The first matching entity, or `null` when no record is found.
      */
     async findOneBy(options: IFindOptions = {}): Promise<T | null> {
         const results = await this.findBy({ ...options, pagesize: 1, start: 1 });
@@ -201,6 +233,10 @@ export class RallyRepository<T extends RallyEntity = any> {
     /**
      * Create a new entity.
      *
+        * @param entityData Raw field payload to send to Rally.
+        * @returns The created entity wrapped in the configured model class.
+        * @throws RallyValidationError When `entityData` is missing or invalid.
+        * @throws RallyOperationError When Rally rejects the create request.
      * @remarks **Tags non-atomicity**: if `entityData` contains a `Tags` array with string names,
      * each tag is resolved or created individually before the create request is sent.
      * This operation is **not atomic**: if one tag creation fails after others have already been
@@ -218,7 +254,13 @@ export class RallyRepository<T extends RallyEntity = any> {
     }
 
     /**
-     * Update an existing entity
+     * Update an existing entity.
+     *
+     * @param objectId Rally ObjectID of the entity to update.
+     * @param updateData Partial update payload or a dirty-trackable entity instance.
+     * @returns The updated entity, or the original entity when no changes need to be sent.
+     * @throws RallyValidationError When required inputs are missing or invalid.
+     * @throws RallyOperationError When Rally rejects the update request.
      */
     async update(objectId: string | number | undefined, updateData: any): Promise<T> {
         if (!objectId) {
@@ -261,6 +303,10 @@ export class RallyRepository<T extends RallyEntity = any> {
     /**
      * Save an entity (create if new, update if exists).
      *
+        * @param entity Entity instance or plain object to persist.
+        * @returns The created or updated entity.
+        * @throws RallyValidationError When `entity` is missing or invalid.
+        * @throws RallyOperationError When Rally rejects the write request.
      * @remarks **Tags non-atomicity**: if the entity contains a `Tags` array with string names,
      * each tag is resolved or created individually before the write request is sent.
      * This operation is **not atomic**: if one tag creation fails after others have already been
@@ -286,7 +332,12 @@ export class RallyRepository<T extends RallyEntity = any> {
     }
 
     /**
-     * Delete an entity
+     * Delete an entity by ObjectID.
+     *
+     * @param objectId Rally ObjectID of the entity to remove.
+     * @returns `true` when the delete operation succeeds.
+     * @throws RallyValidationError When `objectId` is missing.
+     * @throws RallyOperationError When Rally rejects the delete request.
      */
     async delete(objectId: string | number): Promise<boolean> {
         if (!objectId) {
@@ -298,7 +349,11 @@ export class RallyRepository<T extends RallyEntity = any> {
     }
 
     /**
-     * Remove an entity (alias for delete)
+     * Remove an entity by identifier or entity-like object.
+     *
+     * @param idOrEntity ObjectID value or object carrying `ObjectID`/`id`.
+     * @returns `true` when the delete operation succeeds.
+     * @throws RallyValidationError When an ObjectID cannot be resolved from the argument.
      */
     async remove(idOrEntity: string | number | { ObjectID?: string | number; id?: string | number }): Promise<boolean> {
         let objectId: string | number | undefined;
@@ -318,7 +373,10 @@ export class RallyRepository<T extends RallyEntity = any> {
     }
 
     /**
-     * Count entities matching criteria
+     * Count entities matching the provided filter.
+     *
+     * @param where Object-based filter converted to a Rally query string.
+     * @returns Number of matching entities reported by Rally.
      */
     async count(where: Record<string, unknown> = {}): Promise<number> {
         const query = this._buildQuery(where);
@@ -326,7 +384,10 @@ export class RallyRepository<T extends RallyEntity = any> {
     }
 
     /**
-     * Check if any entities match the criteria
+     * Check whether any entity matches the provided filter.
+     *
+     * @param where Object-based filter converted to a Rally query string.
+     * @returns `true` when at least one matching entity exists.
      */
     async exists(where: Record<string, unknown> = {}): Promise<boolean> {
         const entity = await this.findOneBy({ where, fetch: 'ObjectID' });

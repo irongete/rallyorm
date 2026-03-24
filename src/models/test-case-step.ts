@@ -1,8 +1,9 @@
 import { RallyEntity } from './base-entity.js';
 
 /**
- * TestCaseStep
- * Individual step defined within a test case.
+ * Test-case-step entity.
+ *
+ * Represents an individual procedural step defined within a Rally test case.
  */
 export class TestCaseStep extends RallyEntity {
     static entityType = 'testcasestep';

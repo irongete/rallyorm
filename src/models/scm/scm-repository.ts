@@ -1,10 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * SCMRepository
+ * Scm-repository entity.
  *
- * Links Rally to Git, SVN, or other SCM systems.
- * Source control repository configuration linked to Rally.
+ * Represents the source-control repository configuration that links Rally to an
+ * external SCM system.
  */
 export class SCMRepository extends RallyEntity {
     static entityType = 'scmrepository';
@@ -25,15 +25,19 @@ export class SCMRepository extends RallyEntity {
             type: 'enum',
             values: ['Git', 'Subversion', 'Perforce', 'TFS', 'Other']
         },
+        /**
+         * Repository URL or URI exposed to Rally.
+         */
         Uri: {
             type: 'string'
-            // Repository URL/URI
         },
 
         // Associated Projects
+        /**
+         * Projects associated with this source-control repository.
+         */
         Projects: {
             type: 'array'
-            // Projects using this repository
         },
 
         // Metadata

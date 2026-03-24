@@ -1,10 +1,10 @@
 import { WorkspaceDomainObject } from '../base/workspace-domain-object.js';
 
 /**
- * ConversationPost
+ * Conversation-post entity.
  *
- * Discussion post attached to a Rally artifact.
- * Enables threaded discussions on user stories, defects, features, etc.
+ * Represents a discussion post attached to a Rally artifact for threaded
+ * collaboration and audit context.
  */
 export class ConversationPost extends WorkspaceDomainObject {
     static entityType = 'conversationpost';

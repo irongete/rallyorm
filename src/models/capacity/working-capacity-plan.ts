@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * WorkingCapacityPlan
+ * Working-capacity-plan entity.
  *
- * Draft capacity plan record.
+ * Represents a draft capacity plan that is still being edited before it is
+ * published into a finalized planning record.
  */
 export class WorkingCapacityPlan extends RallyEntity {
     static entityType = 'workingcapacityplan';

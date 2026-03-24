@@ -1,10 +1,21 @@
 /**
- * Base class for Rally entities with relationship definitions
+ * Base entity primitives used by every RallyORM model.
+ *
+ * The types and class in this module define how raw Rally records are stored,
+ * validated, serialized, and exposed through model instances with lazy
+ * relationship access.
  */
 import { LazyLink } from '../core/lazy-link.js';
 import { getEntityTypeFromRef, normalizeEntityType } from '../core/ref-utils.js';
 import type { RallyDataSource } from '../core/rally-datasource.js';
 
+/**
+ * Raw data payload stored by a {@link RallyEntity} instance.
+ *
+ * This structure mirrors the WSAPI record shape and may include standard Rally
+ * metadata such as `_ref`, `_type`, and `ObjectID` alongside arbitrary field
+ * values.
+ */
 export interface IRallyEntityData {
     [key: string]: any;
     _ref?: string;
@@ -12,10 +23,22 @@ export interface IRallyEntityData {
     _type?: string;
 }
 
+/**
+ * Runtime context attached to an entity instance.
+ *
+ * The context carries optional services, such as the owning datasource, that
+ * enable lazy relationship loading and richer model behaviour.
+ */
 export interface IRallyEntityContext {
     dataSource?: RallyDataSource;
 }
 
+/**
+ * Validation and metadata rules for a Rally field.
+ *
+ * Field definitions describe expected value types, nullability, enum ranges,
+ * defaults, and optional reference metadata used during validation.
+ */
 export interface IFieldDefinition {
     type?: string;
     required?: boolean;
@@ -33,6 +56,13 @@ export interface IFieldDefinition {
     isCollection?: boolean;
 }
 
+/**
+ * Relationship metadata used for lazy links and include hydration.
+ *
+ * Relation definitions describe how a field maps to another Rally entity type,
+ * whether the relation is inverse or collection-based, and which foreign key
+ * should be used during loading.
+ */
 export interface IRelationDefinition {
     type?: 'belongsTo' | 'hasMany' | 'hasOne' | string;
     entity?: string;
@@ -104,6 +134,13 @@ function entityValuesEqual(left: any, right: any): boolean {
     return false;
 }
 
+/**
+ * Base class for all RallyORM entities.
+ *
+ * Instances wrap raw WSAPI payloads, expose dynamic field access through a
+ * proxy, support validation based on static field definitions, and keep a clean
+ * snapshot so repositories can persist only changed values.
+ */
 export class RallyEntity {
     /**
      * Entity type mapping to Rally API endpoint
@@ -131,6 +168,12 @@ export class RallyEntity {
     _relationCache: Map<string, any>;
     [key: string]: any;
 
+    /**
+     * Create an entity wrapper around raw Rally data.
+     *
+     * @param data Raw field payload returned by Rally or prepared for a write.
+     * @param context Runtime services, typically including the owning datasource.
+     */
     constructor(data: IRallyEntityData = {}, context: IRallyEntityContext = {}) {
         this._data = cloneEntityValue(data);
         this._context = context;
@@ -208,7 +251,9 @@ export class RallyEntity {
     }
 
     /**
-     * Validate entity data against the field definitions.
+     * Validate the current entity payload against the static field definitions.
+     *
+     * @returns `true` when no validation errors are found.
      */
     validate(): boolean {
         this._errors = [];
@@ -224,7 +269,9 @@ export class RallyEntity {
     }
 
     /**
-     * Return the current validation errors.
+     * Return the validation errors collected by the latest {@link validate} call.
+     *
+     * @returns A copy of the current validation error list.
      */
     getErrors(): string[] {
         return [...this._errors];
@@ -466,14 +513,18 @@ export class RallyEntity {
     }
 
     /**
-     * Return a cloned snapshot of the raw entity data.
+     * Serialize the entity into a cloned raw-data snapshot.
+     *
+     * @returns A deep clone of the entity payload suitable for persistence.
      */
     toJSON(): IRallyEntityData {
         return cloneEntityValue(this._data);
     }
 
     /**
-     * Return only the fields changed since the last clean snapshot.
+     * Return only the fields changed since the last committed snapshot.
+     *
+     * @returns A partial payload containing only modified fields.
      */
     getChanges(): Partial<IRallyEntityData> {
         const changes: Partial<IRallyEntityData> = {};
@@ -493,29 +544,37 @@ export class RallyEntity {
     }
 
     /**
-     * Mark current state as clean (update snapshot)
+     * Mark the current entity state as clean for future dirty tracking.
      */
     commit(): void {
         this._originalSnapshot = cloneEntityValue(this._data);
     }
 
     /**
-     * Get a custom field value
-     * Custom fields in Rally typically start with 'c_'
+     * Read a Rally custom field value from the entity payload.
+     *
+     * @param fieldName Custom field name, typically prefixed with `c_`.
+     * @returns The stored field value, if present.
      */
     getCustomField<T = any>(fieldName: string): T | undefined {
         return this._data[fieldName] as T;
     }
 
     /**
-     * Set a custom field value.
+     * Set a single Rally custom field value.
+     *
+     * @param fieldName Custom field name, typically prefixed with `c_`.
+     * @param value Value to assign to the custom field.
      */
     setCustomField<T = any>(fieldName: string, value: T): void {
         this._data[fieldName] = value;
     }
 
     /**
-     * Check whether a custom field currently has a value.
+     * Check whether a custom field currently has a non-null value.
+     *
+     * @param fieldName Custom field name to inspect.
+     * @returns `true` when the field exists and is not `null` or `undefined`.
      */
     hasCustomField(fieldName: string): boolean {
         const value = this._data[fieldName];
@@ -523,14 +582,18 @@ export class RallyEntity {
     }
 
     /**
-     * List all custom field names that start with 'c_'.
+     * List all custom field names currently stored on the entity.
+     *
+     * @returns Custom field names whose keys begin with `c_`.
      */
     listCustomFields(): string[] {
         return Object.keys(this._data).filter(key => key.startsWith('c_'));
     }
 
     /**
-     * Return all custom fields and their current values.
+     * Return every custom field and its current value.
+     *
+     * @returns A shallow map of custom field names to values.
      */
     getCustomFields(): Record<string, any> {
         const customFields: Record<string, any> = {};
@@ -541,7 +604,9 @@ export class RallyEntity {
     }
 
     /**
-     * Set multiple custom fields at once.
+     * Set multiple custom fields in a single call.
+     *
+     * @param fields Map of custom field names to values.
      */
     setCustomFields(fields: Record<string, any>): void {
         for (const [key, value] of Object.entries(fields)) {

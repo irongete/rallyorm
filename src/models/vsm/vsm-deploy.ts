@@ -1,9 +1,10 @@
 import { WorkspaceDomainObject } from '../base/workspace-domain-object.js';
 
 /**
- * VSMDeploy
+ * Vsm-deploy entity.
  *
- * Value Stream Management deployment record.
+ * Represents a Value Stream Management deployment record synchronized into
+ * Rally to connect deployment events with value-stream outcomes and analytics.
  */
 export class VSMDeploy extends WorkspaceDomainObject {
     static entityType = 'vsmdeploy';

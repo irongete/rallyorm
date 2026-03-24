@@ -1,10 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * KeyResult
+ * Key-result entity.
  *
- * Tracks measurable outcomes for objectives.
- * Key result attached to an OKR objective.
+ * Represents a measurable outcome linked to an objective in Rally's OKR data
+ * model.
  */
 export class KeyResult extends RallyEntity {
     static entityType = 'keyresult';

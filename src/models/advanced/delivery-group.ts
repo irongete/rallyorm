@@ -1,9 +1,11 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * DeliveryGroup
+ * Delivery group entity.
  *
- * Group of artifacts synchronized for delivery.
+ * Represents a Rally delivery group used to coordinate a set of artifacts that
+ * move through delivery together, typically as part of a shared release or
+ * cross-team delivery motion.
  */
 export class DeliveryGroup extends RallyEntity {
     static entityType = 'deliverygroup';

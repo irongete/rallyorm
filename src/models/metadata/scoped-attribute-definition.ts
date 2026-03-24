@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * ScopedAttributeDefinition
+ * Scoped-attribute-definition entity.
  *
- * Attribute definition scoped to a specific workspace or project context.
+ * Represents an attribute definition whose values or availability are scoped to
+ * a specific Rally workspace or project context.
  */
 export class ScopedAttributeDefinition extends RallyEntity {
     static entityType = 'scopedattributedefinition';

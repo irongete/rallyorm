@@ -2,6 +2,9 @@ import { RallyEntity, type IFieldDefinition, type IRelationDefinition } from '..
 
 /**
  * Base class for Rally records with persistence metadata.
+ *
+ * Adds identifiers, references, and creation metadata shared by persisted Rally
+ * records.
  */
 export abstract class PersistableObject extends RallyEntity {
     static entityType = 'persistableobject';

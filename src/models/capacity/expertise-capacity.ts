@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * ExpertiseCapacity
+ * Expertise-capacity entity.
  *
- * Available capacity for a specific expertise within a project.
+ * Represents the available capacity for a specific expertise within a Rally
+ * project or planning scope.
  */
 export class ExpertiseCapacity extends RallyEntity {
     static entityType = 'expertisecapacity';

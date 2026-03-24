@@ -15,8 +15,10 @@ interface ILazyLinkDataSource {
 }
 
 /**
- * Wrapper for Rally reference objects ({ _ref: '...' })
- * Allows lazy loading of the referenced entity
+ * Lazy wrapper for Rally reference objects.
+ *
+ * Instances hold a lightweight Rally reference and resolve the full entity on
+ * demand through the surrounding datasource context.
  */
 export class LazyLink {
     _ref?: string;
@@ -39,7 +41,10 @@ export class LazyLink {
     }
 
     /**
-     * Load the referenced entity
+     * Resolve and load the referenced entity.
+     *
+     * @returns The loaded entity, or `null` when the reference type cannot be resolved.
+     * @throws RallyValidationError When the reference or datasource context is missing.
      */
     async load(): Promise<RallyEntity | null> {
         if (!this._ref) {
@@ -90,7 +95,7 @@ export class LazyLink {
     }
 
     /**
-     * To ensure JSON serialization works as expected (returning the original data)
+     * Serialize the lazy link back to its original reference payload.
      */
     toJSON(): any {
         const { _dataSource, ...data } = this;

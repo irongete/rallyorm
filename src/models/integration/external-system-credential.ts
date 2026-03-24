@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * ExternalSystemCredential
+ * External-system-credential entity.
  *
- * Stores credentials for accessing external systems.
+ * Represents a stored credential used by Rally integrations to access external
+ * systems without embedding those secrets directly in integration logic.
  */
 export class ExternalSystemCredential extends RallyEntity {
     static entityType = 'externalsystemcredential';

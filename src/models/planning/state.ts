@@ -1,12 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * State
+ * State entity.
  *
- * Defines custom Kanban workflow states for work items.
- * States can have WIP limits, exit policies, and markers for in-progress/accepted.
- *
- * States are project-specific and allow flexible Kanban board configuration.
+ * Represents a custom workflow state used by Rally Kanban-style processes,
+ * including optional WIP and policy configuration.
  */
 export class State extends RallyEntity {
     static entityType = 'state';

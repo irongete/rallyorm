@@ -1,7 +1,11 @@
 import { PortfolioItem } from '../base/portfolio-item.js';
 
 /**
- * Objective model.
+ * Objective entity.
+ *
+ * Represents an OKR objective tracked in Rally and linked to portfolio planning
+ * and measurable key results, providing the strategic anchor for related OKR
+ * progress tracking.
  */
 export class Objective extends PortfolioItem {
     static entityType = 'objective';

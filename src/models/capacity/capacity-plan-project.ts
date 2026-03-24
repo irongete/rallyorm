@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * CapacityPlanProject
+ * Capacity-plan-project entity.
  *
- * Project association and planned capacity metrics for a capacity plan.
+ * Represents the project-level association and planned capacity metrics stored
+ * within a Rally capacity plan.
  */
 export class CapacityPlanProject extends RallyEntity {
     static entityType = 'capacityplanproject';

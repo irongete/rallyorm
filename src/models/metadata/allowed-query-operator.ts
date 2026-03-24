@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * AllowedQueryOperator
+ * Allowed-query-operator entity.
  *
- * Query operator allowed for a specific attribute.
+ * Represents a query operator that Rally allows for a specific attribute
+ * definition.
  */
 export class AllowedQueryOperator extends RallyEntity {
     static entityType = 'allowedqueryoperator';

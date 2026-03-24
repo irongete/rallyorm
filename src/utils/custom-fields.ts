@@ -1,7 +1,11 @@
 import { RallyEntity, IFieldDefinition } from '../models/base-entity.js';
 
 /**
- * Extend an existing Rally model with custom fields.
+ * Create a derived model class that merges custom field definitions into an existing model.
+ *
+ * @param BaseModel Existing Rally model class to extend.
+ * @param customFields Map of Rally custom field definitions keyed by field name.
+ * @returns A derived model class that preserves the original entity type and relations.
  */
 export function extendModel(
     BaseModel: typeof RallyEntity,
@@ -25,14 +29,20 @@ export function extendModel(
 }
 
 /**
- * Validate that a custom field name follows Rally conventions.
+ * Validate that a custom field name follows Rally naming conventions.
+ *
+ * @param fieldName Candidate field name to validate.
+ * @returns `true` when the field name starts with `c_` and uses a valid identifier shape.
  */
 export function isValidCustomFieldName(fieldName: string): boolean {
     return /^c_[a-zA-Z][a-zA-Z0-9_]*$/.test(fieldName);
 }
 
 /**
- * Create a typed accessor for an entity's custom fields.
+ * Create a typed proxy accessor for an entity's custom fields.
+ *
+ * @param entity Entity whose custom fields should be accessed through the proxy.
+ * @returns A proxy that maps property reads and writes to custom field accessors.
  */
 export function createCustomFieldAccessor<T extends Record<string, any>>(
     entity: RallyEntity

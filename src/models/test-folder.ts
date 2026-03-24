@@ -1,8 +1,10 @@
 import { RallyEntity } from './base-entity.js';
 
 /**
- * TestFolder
- * Hierarchical container for organizing test cases.
+ * Test-folder entity.
+ *
+ * Represents a hierarchical container used to organize Rally test cases and
+ * related testing assets.
  */
 export class TestFolder extends RallyEntity {
     static entityType = 'testfolder';

@@ -2,10 +2,10 @@ import { type IFieldDefinition, type IRelationDefinition } from '../base-entity.
 import { SchedulableArtifact } from '../base/schedulable-artifact.js';
 
 /**
- * ScheduledTestCase
+ * Scheduled-test-case entity.
  *
- * Links a TestCase to a specific Iteration or Release for planned execution.
- * Inherits scheduling fields from SchedulableArtifact (Iteration, Release, ScheduleState, etc.).
+ * Represents a test case that has been scheduled for execution in a specific
+ * iteration or release.
  */
 export class ScheduledTestCase extends SchedulableArtifact {
     static entityType = 'scheduledtestcase';

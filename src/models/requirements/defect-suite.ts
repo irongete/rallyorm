@@ -2,10 +2,10 @@ import { type IFieldDefinition, type IRelationDefinition } from '../base-entity.
 import { SchedulableArtifact } from '../base/schedulable-artifact.js';
 
 /**
- * DefectSuite
+ * Defect-suite entity.
  *
- * Groups related defects together for batch management and scheduling.
- * Can be assigned to iterations and releases like a SchedulableArtifact.
+ * Represents a schedulable grouping of related defects that can be managed,
+ * prioritized, and planned together.
  */
 export class DefectSuite extends SchedulableArtifact {
     static entityType = 'defectsuite';

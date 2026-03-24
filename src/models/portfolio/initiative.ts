@@ -1,10 +1,10 @@
 import { PortfolioItem } from '../base/portfolio-item.js';
 
 /**
- * Initiative
+ * Initiative entity.
  *
- * Top-level strategic portfolio item. Initiatives contain Features as children
- * and represent major business goals or programs.
+ * Represents a high-level portfolio item used to group features under a major
+ * business goal, investment, or program in Rally.
  */
 export class Initiative extends PortfolioItem {
     static entityType = 'portfolioitem/initiative';

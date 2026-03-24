@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * UserNotificationFilter
+ * User-notification-filter entity.
  *
- * Filter configuration used for user notifications.
+ * Represents the filter configuration that controls which notifications a user
+ * receives from Rally, helping tailor alert volume and relevance.
  */
 export class UserNotificationFilter extends RallyEntity {
     static entityType = 'usernotificationfilter';

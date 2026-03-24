@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * IterationCumulativeFlowData
+ * Iteration cumulative-flow-data entity.
  *
- * Analytics data for Iteration Cumulative Flow Diagrams (CFD).
+ * Represents the historical analytics points used to render cumulative flow
+ * diagrams for a Rally iteration.
  */
 export class IterationCumulativeFlowData extends RallyEntity {
     static entityType = 'iterationcumulativeflowdata';

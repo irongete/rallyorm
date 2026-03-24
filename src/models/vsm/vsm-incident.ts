@@ -1,9 +1,10 @@
 import { WorkspaceDomainObject } from '../base/workspace-domain-object.js';
 
 /**
- * VSMIncident
+ * Vsm-incident entity.
  *
- * Value Stream Management incident record.
+ * Represents a Value Stream Management incident record synchronized into Rally
+ * so operational disruptions can be analyzed alongside delivery data.
  */
 export class VSMIncident extends WorkspaceDomainObject {
     static entityType = 'vsmincident';

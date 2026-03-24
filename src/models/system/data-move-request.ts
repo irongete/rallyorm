@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * DataMoveRequest
+ * Data-move-request entity.
  *
- * System request to move data between Rally containers.
+ * Represents a system-level request to move Rally data between supported
+ * containers or scopes.
  */
 export class DataMoveRequest extends RallyEntity {
     static entityType = 'datamoverequest';

@@ -1,9 +1,10 @@
 import { WorkspaceDomainObject } from '../base/workspace-domain-object.js';
 
 /**
- * VSMChange
+ * Vsm-change entity.
  *
- * Value Stream Management change record.
+ * Represents a Value Stream Management change record synchronized into Rally,
+ * typically linking code or release activity back to value-stream reporting.
  */
 export class VSMChange extends WorkspaceDomainObject {
     static entityType = 'vsmchange';

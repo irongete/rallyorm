@@ -3,6 +3,9 @@ import { Artifact } from './artifact.js';
 
 /**
  * Base class for portfolio hierarchy items.
+ *
+ * Adds strategic planning, rollup, dependency, and estimate fields shared by
+ * Rally portfolio-item records.
  */
 export abstract class PortfolioItem extends Artifact {
     static entityType = 'portfolioitem';

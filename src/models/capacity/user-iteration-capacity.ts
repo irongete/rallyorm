@@ -1,7 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * User iteration capacity model.
+ * User-iteration-capacity entity.
+ *
+ * Represents the capacity allocation and load data for a specific user within a
+ * Rally iteration.
  */
 export class UserIterationCapacity extends RallyEntity {
     static entityType = 'useriterationcapacity';

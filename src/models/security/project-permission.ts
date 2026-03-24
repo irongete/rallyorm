@@ -1,9 +1,9 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * ProjectPermission
+ * Project-permission entity.
  *
- * User permission level within a specific project.
+ * Represents a user's permission assignment within a specific Rally project.
  */
 export class ProjectPermission extends RallyEntity {
     static entityType = 'projectpermission';

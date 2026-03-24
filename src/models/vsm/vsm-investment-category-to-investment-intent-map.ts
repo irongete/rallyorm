@@ -1,9 +1,10 @@
 import { WorkspaceDomainObject } from '../base/workspace-domain-object.js';
 
 /**
- * VSMInvestmentCategoryToInvestmentIntentMap
+ * Vsm-investment-category-to-investment-intent-map entity.
  *
- * Mapping between a VSM investment category and an investment intent.
+ * Represents the mapping between a Value Stream Management investment category
+ * and an investment intent.
  */
 export class VSMInvestmentCategoryToInvestmentIntentMap extends WorkspaceDomainObject {
     static entityType = 'vsminvestmentcategorytoinvestmentintentmap';

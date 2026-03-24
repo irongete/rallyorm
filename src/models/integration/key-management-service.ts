@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * KeyManagementService
+ * Key-management-service entity.
  *
- * Service configuration for managing encryption keys.
+ * Represents the service configuration used to manage encryption keys for a
+ * Rally environment, including external key-provider integration points.
  */
 export class KeyManagementService extends RallyEntity {
     static entityType = 'keymanagementservice';

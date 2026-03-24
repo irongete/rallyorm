@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * PanelDefinitionConfigProperty
+ * Panel-definition-config-property entity.
  *
- * Configuration property supported by a dashboard panel definition.
+ * Represents a configurable property exposed by a Rally dashboard panel
+ * definition so panel instances can persist supported settings.
  */
 export class PanelDefinitionConfigProperty extends RallyEntity {
     static entityType = 'paneldefinitionconfigproperty';

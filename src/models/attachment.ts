@@ -1,8 +1,10 @@
 import { RallyEntity } from './base-entity.js';
 
 /**
- * Attachment
- * File attachments linked to Rally artifacts.
+ * Attachment entity.
+ *
+ * Represents a file attachment linked to a Rally artifact together with its
+ * metadata.
  */
 export class Attachment extends RallyEntity {
     static entityType = 'attachment';

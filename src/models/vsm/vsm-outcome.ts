@@ -1,9 +1,10 @@
 import { WorkspaceDomainObject } from '../base/workspace-domain-object.js';
 
 /**
- * VSMOutcome
+ * Vsm-outcome entity.
  *
- * Value Stream Management outcome record.
+ * Represents a Value Stream Management outcome record synchronized into Rally
+ * to track business or delivery results over time.
  */
 export class VSMOutcome extends WorkspaceDomainObject {
     static entityType = 'vsmoutcome';

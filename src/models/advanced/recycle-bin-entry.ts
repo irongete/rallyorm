@@ -1,10 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * RecycleBinEntry
+ * Recycle-bin entry entity.
  *
- * Deleted item that temporarily resides in the recycle bin
- * before permanent deletion.
+ * Represents an item that has been deleted in Rally and is temporarily retained
+ * before permanent removal.
  */
 export class RecycleBinEntry extends RallyEntity {
     static entityType = 'recyclebinentry';

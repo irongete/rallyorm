@@ -1,9 +1,10 @@
 import { WorkspaceDomainObject } from '../base/workspace-domain-object.js';
 
 /**
- * VSMProductPortfolioItem
+ * Vsm-product-portfolio-item entity.
  *
- * Link between a VSM product and a portfolio item.
+ * Represents the link between a Value Stream Management product and a Rally
+ * portfolio item.
  */
 export class VSMProductPortfolioItem extends WorkspaceDomainObject {
     static entityType = 'vsmproductportfolioitem';

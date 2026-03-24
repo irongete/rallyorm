@@ -1,9 +1,11 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * PageConfiguration
+ * Page-configuration entity.
  *
- * Configuration settings for a dashboard page.
+ * Represents the configuration state for a Rally dashboard page, including its
+ * title, persisted layout settings, and other page-level presentation
+ * preferences.
  */
 export class PageConfiguration extends RallyEntity {
     static entityType = 'pageconfiguration';

@@ -1,10 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * PortfolioItemPredecessorRelationship
+ * Portfolio-item-predecessor-relationship entity.
  *
- * Defines dependency relationships between portfolio items.
- * Manages predecessor-successor links for Features, Initiatives, Themes.
+ * Represents a dependency link between two portfolio items so Rally can model
+ * predecessor and successor planning constraints.
  */
 export class PortfolioItemPredecessorRelationship extends RallyEntity {
     static entityType = 'portfolioitempredecessorrelationship';

@@ -1,9 +1,10 @@
 import { RallyEntity } from '../base-entity.js';
 
 /**
- * Expertise
+ * Expertise entity.
  *
- * Skill or specialization definition used in capacity planning.
+ * Represents a skill or specialization taxonomy value used in Rally capacity
+ * planning to classify demand, supply, and assignments by capability.
  */
 export class Expertise extends RallyEntity {
     static entityType = 'expertise';

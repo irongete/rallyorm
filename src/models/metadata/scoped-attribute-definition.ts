@@ -7,7 +7,7 @@ import { RallyEntity } from '../base-entity.js';
  * a specific Rally workspace or project context.
  */
 export class ScopedAttributeDefinition extends RallyEntity {
-    static entityType = 'scopedattributedefinition';
+    static isAbstract = false;
 
     static fields = {
         Name: { type: 'string' },

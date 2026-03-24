@@ -7,7 +7,6 @@ import { RallyEntity } from '../base-entity.js';
  * constraints, and allowed values for a type definition.
  */
 export class AttributeDefinition extends RallyEntity {
-    static entityType = 'attributedefinition';
     static isAbstract = false;
 
     static fields = {

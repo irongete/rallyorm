@@ -1,6 +1,6 @@
 import { expect } from 'chai';
 import {
-    AttributeDefinition,
+
     Connection,
     Dashboard,
     FlowState,
@@ -29,7 +29,7 @@ describe('Public API', () => {
         expect(Iteration.entityType).to.equal('iteration');
         expect(Workspace.entityType).to.equal('workspace');
         expect(TypeDefinition.entityType).to.equal('typedefinition');
-        expect(AttributeDefinition.entityType).to.equal('attributedefinition');
+
         expect(WorkspaceConfiguration.entityType).to.equal('workspaceconfiguration');
         expect(Theme.entityType).to.equal('portfolioitem/theme');
         expect(Dashboard.entityType).to.equal('dashboard');

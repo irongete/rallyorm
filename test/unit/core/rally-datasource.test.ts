@@ -51,7 +51,7 @@ describe('RallyDataSource', () => {
             'userIterationCapacities', 'publishedCapacityPlans', 'workingCapacityPlans', 'capacityPlanItems',
             'capacityPlanAssignments', 'capacityPlanProjects', 'expertises', 'expertiseCapacities',
             'expertiseDemands', 'objectives', 'keyResults', 'keyResultActualValues', 'keyResultInterimTargets',
-            'objectiveConversationPosts', 'typeDefinitions', 'attributeDefinitions', 'scopedAttributeDefinitions',
+            'objectiveConversationPosts', 'typeDefinitions',
             'allowedAttributeValues', 'allowedQueryOperators', 'workspaceConfigurations', 'apps', 'dashboards',
             'panels', 'pageConfigurations', 'webLinkDefinitions', 'panelDefinitionConfigProperties',
             'timeEntryItems', 'timeEntryValues', 'vsmProducts', 'vsmComponents', 'vsmChanges', 'vsmDeploys',

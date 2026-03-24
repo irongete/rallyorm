@@ -91,8 +91,7 @@ import { ObjectiveConversationPost } from '../models/okr/objective-conversation-
 
 // Metadata & Introspection
 import { TypeDefinition } from '../models/metadata/type-definition.js';
-import { AttributeDefinition } from '../models/metadata/attribute-definition.js';
-import { ScopedAttributeDefinition } from '../models/metadata/scoped-attribute-definition.js';
+
 import { AllowedAttributeValue } from '../models/metadata/allowed-attribute-value.js';
 import { AllowedQueryOperator } from '../models/metadata/allowed-query-operator.js';
 import { WorkspaceConfiguration } from '../models/metadata/workspace-configuration.js';
@@ -712,19 +711,7 @@ export class RallyDataSource {
         return this.getRepository(TypeDefinition);
     }
 
-    /**
-     * Attribute definitions repository
-     */
-    get attributeDefinitions(): RallyRepository<AttributeDefinition> {
-        return this.getRepository(AttributeDefinition);
-    }
 
-    /**
-     * Scoped attribute definitions repository
-     */
-    get scopedAttributeDefinitions(): RallyRepository<ScopedAttributeDefinition> {
-        return this.getRepository(ScopedAttributeDefinition);
-    }
 
     /**
      * Allowed attribute values repository

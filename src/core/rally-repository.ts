@@ -3,10 +3,11 @@ import { isRallyRef, toRelativeRef } from './ref-utils.js';
 import type { RallyClient, IQueryOptions } from './rally-client.js';
 import type { RallyDataSource } from './rally-datasource.js';
 import { RallyEntity } from '../models/base-entity.js';
+import type { RallyModelClass } from '../models/registry.js';
 
 export interface IFindOptions extends IQueryOptions {
     include?: string[];
-    where?: Record<string, any>;
+    where?: Record<string, unknown>;
 }
 
 /**
@@ -16,8 +17,8 @@ export interface IFindOptions extends IQueryOptions {
 export class RallyRepository<T extends RallyEntity = any> {
     entityType: string;
     client: RallyClient;
-    modelClass: typeof RallyEntity;
-    modelRegistry: Record<string, typeof RallyEntity>;
+    modelClass: typeof RallyEntity | null;
+    modelRegistry: Record<string, RallyModelClass>;
     dataSource: RallyDataSource | null;
     relationshipLoader: RelationshipLoader;
 
@@ -27,8 +28,8 @@ export class RallyRepository<T extends RallyEntity = any> {
     constructor(
         entityType: string,
         rallyClient: RallyClient,
-        modelClass: any = null,
-        modelRegistry: Record<string, any> = {},
+        modelClass: typeof RallyEntity | null = null,
+        modelRegistry: Record<string, RallyModelClass> = {},
         dataSource: RallyDataSource | null = null
     ) {
         if (!entityType || typeof entityType !== 'string') {
@@ -131,14 +132,14 @@ export class RallyRepository<T extends RallyEntity = any> {
     /**
      * Find a single entity by ID or criteria
      */
-    async findOne(idOrWhere: string | number | Record<string, any>, options: IFindOptions = {}): Promise<T | null> {
-        let entity: any;
+    async findOne(idOrWhere: string | number | Record<string, unknown>, options: IFindOptions = {}): Promise<T | null> {
+        let entity: T | null;
 
         if (typeof idOrWhere === 'string' || typeof idOrWhere === 'number') {
             const normalized = this._normalizeOptions(options);
             const { include, ...queryOptions } = normalized;
 
-            entity = await this.client.get(this.entityType, String(idOrWhere), queryOptions);
+            entity = await this.client.get(this.entityType, String(idOrWhere), queryOptions) as T | null;
 
             if (!entity) {
                 return null;
@@ -148,13 +149,13 @@ export class RallyRepository<T extends RallyEntity = any> {
 
             if (include && include.length > 0) {
                 entity = await this.relationshipLoader.loadRelationships(
-                    entity,
+                    entity as T & Record<string, unknown>,
                     include,
                     this.modelRegistry
-                );
+                ) as T;
             }
 
-            return entity as T;
+            return entity;
         } else {
             const where = idOrWhere;
             return this.findOneBy({ where, ...options });
@@ -261,8 +262,8 @@ export class RallyRepository<T extends RallyEntity = any> {
     /**
      * Remove an entity (alias for delete)
      */
-    async remove(idOrEntity: string | number | any): Promise<boolean> {
-        let objectId;
+    async remove(idOrEntity: string | number | { ObjectID?: string | number; id?: string | number }): Promise<boolean> {
+        let objectId: string | number | undefined;
 
         if (typeof idOrEntity === 'string' || typeof idOrEntity === 'number') {
             objectId = String(idOrEntity);
@@ -280,7 +281,7 @@ export class RallyRepository<T extends RallyEntity = any> {
     /**
      * Count entities matching criteria
      */
-    async count(where: Record<string, any> = {}): Promise<number> {
+    async count(where: Record<string, unknown> = {}): Promise<number> {
         const query = this._buildQuery(where);
         if (typeof this.client.queryCount === 'function') {
             return this.client.queryCount(this.entityType, { query });
@@ -297,7 +298,7 @@ export class RallyRepository<T extends RallyEntity = any> {
     /**
      * Check if any entities match the criteria
      */
-    async exists(where: Record<string, any> = {}): Promise<boolean> {
+    async exists(where: Record<string, unknown> = {}): Promise<boolean> {
         const entity = await this.findOneBy({ where, fetch: 'ObjectID' });
         return entity !== null;
     }

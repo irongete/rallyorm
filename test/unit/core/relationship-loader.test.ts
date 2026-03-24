@@ -1,7 +1,34 @@
 import { expect } from 'chai';
+import { RallyClient } from '../../../src/core/rally-client.js';
 import { RelationshipLoader } from '../../../src/core/relationship-loader.js';
 import { RallyEntity } from '../../../src/models/base-entity.js';
 import { createMockClient } from '../../setup/test-helpers.js';
+
+async function withEnv<T>(values: Record<string, string | undefined>, callback: () => Promise<T> | T): Promise<T> {
+    const originalValues = new Map<string, string | undefined>();
+
+    for (const [key, value] of Object.entries(values)) {
+        originalValues.set(key, process.env[key]);
+
+        if (value === undefined) {
+            delete process.env[key];
+        } else {
+            process.env[key] = value;
+        }
+    }
+
+    try {
+        return await callback();
+    } finally {
+        for (const [key, value] of originalValues.entries()) {
+            if (value === undefined) {
+                delete process.env[key];
+            } else {
+                process.env[key] = value;
+            }
+        }
+    }
+}
 
 describe('RelationshipLoader', () => {
     it('should load nested belongsTo relationships for slash-delimited entity types', async () => {
@@ -170,6 +197,207 @@ describe('RelationshipLoader', () => {
 
         expect(artifact._data.Tags).to.have.length(1);
         expect(artifact._data.Tags[0]).to.include({ _ref: '/tag/1', Name: 'Backend' });
+    });
+
+    it('should load independent collection relationships in parallel', async () => {
+        class ProjectModel extends RallyEntity {
+            static entityType = 'project';
+            static relations = {
+                TeamMembers: { type: 'hasMany', entity: 'user', foreignKey: 'TeamMemberships', isCollection: true }
+            };
+        }
+
+        let activeRequests = 0;
+        let peakConcurrency = 0;
+
+        const client = createMockClient({
+            queryCollection: async (ref: string) => {
+                activeRequests += 1;
+                peakConcurrency = Math.max(peakConcurrency, activeRequests);
+
+                await new Promise(resolve => setTimeout(resolve, 10));
+
+                activeRequests -= 1;
+
+                return [{ _ref: `${ref}/user/1`, _type: 'user', DisplayName: 'Parallel User' }];
+            }
+        });
+
+        const loader = new RelationshipLoader(client as any);
+        const projects = [
+            new ProjectModel({
+                _ref: '/project/1',
+                _type: 'project',
+                TeamMembers: { _ref: '/project/1/TeamMembers', Count: 1 }
+            }),
+            new ProjectModel({
+                _ref: '/project/2',
+                _type: 'project',
+                TeamMembers: { _ref: '/project/2/TeamMembers', Count: 1 }
+            })
+        ];
+
+        await loader.loadRelationships(projects, ['TeamMembers.DisplayName'], {
+            project: ProjectModel,
+            user: RallyEntity
+        });
+
+        expect(peakConcurrency).to.be.greaterThan(1);
+        expect(projects[0]._data.TeamMembers).to.have.length(1);
+        expect(projects[1]._data.TeamMembers).to.have.length(1);
+    });
+
+    it('should respect RALLY_MAX_CONCURRENT_REQUESTS during parallel relationship loading', async () => {
+        class ProjectModel extends RallyEntity {
+            static entityType = 'project';
+            static relations = {
+                TeamMembers: { type: 'hasMany', entity: 'user', foreignKey: 'TeamMemberships', isCollection: true }
+            };
+        }
+
+        await withEnv({
+            RALLY_MAX_CONCURRENT_REQUESTS: '1'
+        }, async () => {
+            let activeRequests = 0;
+            let peakConcurrency = 0;
+
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                logLevel: 'silent',
+                fetch: async (url) => {
+                    activeRequests += 1;
+                    peakConcurrency = Math.max(peakConcurrency, activeRequests);
+
+                    await new Promise(resolve => setTimeout(resolve, 10));
+
+                    activeRequests -= 1;
+
+                    const ref = new URL(String(url)).pathname.replace('/slm/webservice/v2.0', '');
+
+                    return {
+                        ok: true,
+                        status: 200,
+                        statusText: 'OK',
+                        headers: { get: () => null, getSetCookie: () => [] },
+                        text: async () => JSON.stringify({
+                            QueryResult: {
+                                Results: [{ _ref: `${ref}/user/1`, _type: 'user', DisplayName: 'Queued User' }],
+                                TotalResultCount: 1
+                            }
+                        })
+                    } as unknown as Response;
+                }
+            });
+
+            const loader = new RelationshipLoader(client);
+            const projects = [
+                new ProjectModel({
+                    _ref: '/project/1',
+                    _type: 'project',
+                    TeamMembers: { _ref: '/project/1/TeamMembers', Count: 1 }
+                }),
+                new ProjectModel({
+                    _ref: '/project/2',
+                    _type: 'project',
+                    TeamMembers: { _ref: '/project/2/TeamMembers', Count: 1 }
+                }),
+                new ProjectModel({
+                    _ref: '/project/3',
+                    _type: 'project',
+                    TeamMembers: { _ref: '/project/3/TeamMembers', Count: 1 }
+                })
+            ];
+
+            await loader.loadRelationships(projects, ['TeamMembers.DisplayName'], {
+                project: ProjectModel,
+                user: RallyEntity
+            });
+
+            expect(peakConcurrency).to.equal(1);
+            expect(projects[0]._data.TeamMembers).to.have.length(1);
+            expect(projects[1]._data.TeamMembers).to.have.length(1);
+            expect(projects[2]._data.TeamMembers).to.have.length(1);
+        });
+    });
+
+    it('should use available parallelism without exceeding RALLY_MAX_CONCURRENT_REQUESTS', async () => {
+        class ProjectModel extends RallyEntity {
+            static entityType = 'project';
+            static relations = {
+                TeamMembers: { type: 'hasMany', entity: 'user', foreignKey: 'TeamMemberships', isCollection: true }
+            };
+        }
+
+        await withEnv({
+            RALLY_MAX_CONCURRENT_REQUESTS: '2'
+        }, async () => {
+            let activeRequests = 0;
+            let peakConcurrency = 0;
+
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                logLevel: 'silent',
+                fetch: async (url) => {
+                    activeRequests += 1;
+                    peakConcurrency = Math.max(peakConcurrency, activeRequests);
+
+                    await new Promise(resolve => setTimeout(resolve, 10));
+
+                    activeRequests -= 1;
+
+                    const ref = new URL(String(url)).pathname.replace('/slm/webservice/v2.0', '');
+
+                    return {
+                        ok: true,
+                        status: 200,
+                        statusText: 'OK',
+                        headers: { get: () => null, getSetCookie: () => [] },
+                        text: async () => JSON.stringify({
+                            QueryResult: {
+                                Results: [{ _ref: `${ref}/user/1`, _type: 'user', DisplayName: 'Queued User' }],
+                                TotalResultCount: 1
+                            }
+                        })
+                    } as unknown as Response;
+                }
+            });
+
+            const loader = new RelationshipLoader(client);
+            const projects = [
+                new ProjectModel({
+                    _ref: '/project/1',
+                    _type: 'project',
+                    TeamMembers: { _ref: '/project/1/TeamMembers', Count: 1 }
+                }),
+                new ProjectModel({
+                    _ref: '/project/2',
+                    _type: 'project',
+                    TeamMembers: { _ref: '/project/2/TeamMembers', Count: 1 }
+                }),
+                new ProjectModel({
+                    _ref: '/project/3',
+                    _type: 'project',
+                    TeamMembers: { _ref: '/project/3/TeamMembers', Count: 1 }
+                }),
+                new ProjectModel({
+                    _ref: '/project/4',
+                    _type: 'project',
+                    TeamMembers: { _ref: '/project/4/TeamMembers', Count: 1 }
+                })
+            ];
+
+            await loader.loadRelationships(projects, ['TeamMembers.DisplayName'], {
+                project: ProjectModel,
+                user: RallyEntity
+            });
+
+            expect(peakConcurrency).to.be.greaterThan(1);
+            expect(peakConcurrency).to.be.at.most(2);
+            expect(projects[0]._data.TeamMembers).to.have.length(1);
+            expect(projects[1]._data.TeamMembers).to.have.length(1);
+            expect(projects[2]._data.TeamMembers).to.have.length(1);
+            expect(projects[3]._data.TeamMembers).to.have.length(1);
+        });
     });
 
     it('should evict the oldest relationship cache entries when the cache limit is exceeded', () => {

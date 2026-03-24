@@ -139,9 +139,38 @@ story.customFields.c_MyField = 'Hello';
 ## Development
 
 - Run tests: `npm test`
+- Copy `.env.example` to `.env` for local live validation. Keep `.env` untracked and never commit real credentials.
 - Run live integration tests explicitly: `RALLY_INTEGRATION=1 npm run test:live`
-- Run full release validation: `npm run release:check:live`
+- Run full release validation with live Rally checks: `npm run release:check:live`
 - Publish: `npm publish` (runs `prepublishOnly` and blocks if `release:check` fails)
+
+### Live Validation Environment
+
+The normal release gate does not require real Rally credentials.
+
+Use live validation only when you want to verify the package against a real Rally environment.
+
+Variables used by the live suite:
+
+- `RALLY_INTEGRATION`: required to opt in to live tests. Use `1` or `true`.
+- `RALLY_API_KEY`: required for any live integration run.
+- `RALLY_WORKSPACE`: optional workspace ObjectID.
+- `RALLY_BASE_URL`: optional WSAPI base URL.
+- `RALLY_LOG_LEVEL`: optional client log level for live runs.
+- `RALLY_MAX_CONCURRENT_REQUESTS`: optional global concurrency limit for Rally API requests. Default is `10`.
+- `RALLY_TEST_PROJECT_OID`: required for live write validation.
+- `RALLY_TEST_USERSTORY_OID`: optional fixture ObjectID for targeted scenarios.
+- `RALLY_TEST_TESTCASE_OID`: optional fixture ObjectID for targeted scenarios.
+
+Typical local flow:
+
+```bash
+npm test
+npm run release:check
+npm run release:check:live
+```
+
+`release:check:live` already enables `RALLY_INTEGRATION=1` internally. You still need the corresponding environment variables to be present.
 
 ## License
 

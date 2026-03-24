@@ -1,9 +1,28 @@
-import { toRelativeRef, toAbsoluteRef, stripWsapiPrefix } from './ref-utils.js';
+import { toRelativeRef, toAbsoluteRef } from './ref-utils.js';
 import type { RallyClient } from './rally-client.js';
+import type { IRallyEntityData, IRelationDefinition } from '../models/base-entity.js';
+import type { RallyModelClass } from '../models/registry.js';
 
 interface IIncludeConfig {
     children: Record<string, IIncludeConfig>;
     isLeaf: boolean;
+}
+
+interface IRelationshipEntity {
+    _data?: IRallyEntityData;
+    _ref?: string;
+    _type?: string;
+    _loadedRelations?: Set<string>;
+    [key: string]: unknown;
+}
+
+type IModelRegistry = Record<string, RallyModelClass>;
+
+interface ICollectionField {
+    _ref?: string;
+    _tagsNameArray?: unknown[];
+    Count?: number;
+    Results?: unknown;
 }
 
 /**
@@ -11,7 +30,7 @@ interface IIncludeConfig {
  */
 export class RelationshipLoader {
     client: RallyClient;
-    private cache: Map<string, any>;
+    private cache: Map<string, IRelationshipEntity>;
     private maxCacheEntries: number;
 
     constructor(rallyClient: RallyClient) {
@@ -24,33 +43,43 @@ export class RelationshipLoader {
      * Internal warning helper that respects RallyClient logger when available.
      * Falls silent when no logger is provided.
      */
-    private _warn(...args: any[]): void {
+    private _warn(...args: unknown[]): void {
         const warn = this.client?.logger?.warn;
         if (typeof warn === 'function') {
             warn(...args);
         }
     }
 
+    private _asCollectionField(value: unknown): ICollectionField | null {
+        if (!value || typeof value !== 'object') {
+            return null;
+        }
+
+        return value as ICollectionField;
+    }
+
     /**
      * Load relationships for entities based on include array
      */
-    async loadRelationships(entities: any | any[], includes: string[] = [], modelRegistry: Record<string, any> = {}): Promise<any[]> {
+    async loadRelationships<T extends IRelationshipEntity>(entities: T, includes?: string[], modelRegistry?: IModelRegistry): Promise<T>;
+    async loadRelationships<T extends IRelationshipEntity>(entities: T[], includes?: string[], modelRegistry?: IModelRegistry): Promise<T[]>;
+    async loadRelationships<T extends IRelationshipEntity>(entities: T | T[], includes: string[] = [], modelRegistry: IModelRegistry = {}): Promise<T | T[]> {
         if (!includes || includes.length === 0) {
-            return Array.isArray(entities) ? entities : [entities];
+            return entities;
         }
 
         const isArray = Array.isArray(entities);
         const entityArray = isArray ? entities : [entities];
 
         if (entityArray.length === 0) {
-            return isArray ? entities : [entities];
+            return entities;
         }
 
         const includePaths = this._parseIncludePaths(includes);
 
         await this._loadRelationshipLevels(entityArray, includePaths, modelRegistry);
 
-        return isArray ? entities : entities;
+        return entities;
     }
 
     /**
@@ -81,7 +110,7 @@ export class RelationshipLoader {
     /**
      * Load relationships level by level
      */
-    private async _loadRelationshipLevels(entities: any[], includePaths: Record<string, IIncludeConfig>, modelRegistry: Record<string, any>, level: number = 0): Promise<void> {
+    private async _loadRelationshipLevels(entities: IRelationshipEntity[], includePaths: Record<string, IIncludeConfig>, modelRegistry: IModelRegistry, level: number = 0): Promise<void> {
         const maximumDepth = 5;
         if (level > maximumDepth) {
             this._warn(`RelationshipLoader: Maximum depth (${maximumDepth}) reached`);
@@ -89,15 +118,18 @@ export class RelationshipLoader {
         }
 
         const entitiesByType = this._groupEntitiesByType(entities);
+        const relationEntries = Object.entries(includePaths);
 
-        for (const [relationName, relationConfig] of Object.entries(includePaths)) {
-            await this._loadRelationshipForAllTypes(
+        await Promise.all(relationEntries.map(([relationName, relationConfig]) =>
+            this._loadRelationshipForAllTypes(
                 entitiesByType,
                 relationName,
                 relationConfig,
                 modelRegistry
-            );
+            )
+        ));
 
+        await Promise.all(relationEntries.map(async ([relationName, relationConfig]) => {
             if (Object.keys(relationConfig.children).length > 0) {
                 const relatedEntities = this._extractRelatedEntities(entities, relationName);
                 if (relatedEntities.length > 0) {
@@ -109,17 +141,18 @@ export class RelationshipLoader {
                     );
                 }
             }
-        }
+        }));
     }
 
     /**
      * Group entities by their type for batch processing
      */
-    private _groupEntitiesByType(entities: any[]): Record<string, any[]> {
-        const groups: Record<string, any[]> = {};
+    private _groupEntitiesByType(entities: IRelationshipEntity[]): Record<string, IRelationshipEntity[]> {
+        const groups: Record<string, IRelationshipEntity[]> = {};
 
         for (const entity of entities) {
-            const entityType = (entity?.constructor && entity.constructor.entityType)
+            const entityConstructor = (entity as { constructor?: { entityType?: string | null } }).constructor;
+            const entityType = (entityConstructor && entityConstructor.entityType)
                 || (entity && entity._type);
 
             if (!entityType) { continue; }
@@ -138,22 +171,22 @@ export class RelationshipLoader {
     /**
      * Load a specific relationship for all entity types
      */
-    private async _loadRelationshipForAllTypes(entitiesByType: Record<string, any[]>, relationName: string, relationConfig: IIncludeConfig, modelRegistry: Record<string, any>): Promise<void> {
-        for (const [entityType, entities] of Object.entries(entitiesByType)) {
+    private async _loadRelationshipForAllTypes(entitiesByType: Record<string, IRelationshipEntity[]>, relationName: string, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry): Promise<void> {
+        await Promise.all(Object.entries(entitiesByType).map(async ([entityType, entities]) => {
             const ModelClass = modelRegistry[entityType];
             if (!ModelClass || !ModelClass.relations || !ModelClass.relations[relationName]) {
-                continue;
+                return;
             }
 
             const relation = ModelClass.relations[relationName];
             await this._loadRelationshipBatch(entities, relationName, relation, relationConfig, modelRegistry);
-        }
+        }));
     }
 
     /**
      * Load relationship for a batch of entities
      */
-    private async _loadRelationshipBatch(entities: any[], relationName: string, relation: any, relationConfig: IIncludeConfig, modelRegistry: Record<string, any>): Promise<void> {
+    private async _loadRelationshipBatch(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry): Promise<void> {
         if (relation.type === 'belongsTo') {
             await this._loadBelongsToRelation(entities, relationName, relation, relationConfig);
         } else if (relation.type === 'hasMany') {
@@ -164,9 +197,9 @@ export class RelationshipLoader {
     /**
      * Load belongsTo relationships (many-to-one)
      */
-    private async _loadBelongsToRelation(entities: any[], relationName: string, relation: any, relationConfig: IIncludeConfig): Promise<void> {
+    private async _loadBelongsToRelation(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig): Promise<void> {
         const foreignKeys = new Set<string>();
-        const entityRefMap = new Map<string, any[]>();
+        const entityRefMap = new Map<string, IRelationshipEntity[]>();
 
         for (const entity of entities) {
             const foreignKeyValue = this._extractForeignKeyValue(entity, relation.foreignKey);
@@ -205,7 +238,7 @@ export class RelationshipLoader {
     /**
      * Load hasMany relationships (one-to-many)
      */
-    private async _loadHasManyRelation(entities: any[], relationName: string, relation: any, relationConfig: IIncludeConfig, modelRegistry: Record<string, any>): Promise<void> {
+    private async _loadHasManyRelation(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry): Promise<void> {
         if (relation.isCollection) {
             await this._loadCollectionRelation(entities, relationName, relation, relationConfig, modelRegistry);
         } else {
@@ -216,24 +249,24 @@ export class RelationshipLoader {
     /**
      * Load Rally collection relationships
      */
-    private async _loadCollectionRelation(entities: any[], relationName: string, relation: any, relationConfig: IIncludeConfig, modelRegistry: Record<string, any>): Promise<void> {
-        for (const entity of entities) {
-            const collectionField = this._getCollectionField(entity, relationName, relation.foreignKey);
+    private async _loadCollectionRelation(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry): Promise<void> {
+        await Promise.all(entities.map(async entity => {
+            const collectionField = this._asCollectionField(this._getCollectionField(entity, relationName, relation.foreignKey));
             if (!collectionField) {
                 this._setRelationshipValue(entity, relationName, []);
-                continue;
+                return;
             }
 
             if (Array.isArray(collectionField._tagsNameArray) && collectionField._tagsNameArray.length > 0) {
                 const tagNames = collectionField._tagsNameArray;
                 const tags = await this._loadTagsByNames(tagNames);
                 this._setRelationshipValue(entity, relationName, tags);
-                continue;
+                return;
             }
 
             if (typeof collectionField._ref !== 'string' || collectionField._ref.length === 0) {
                 this._setRelationshipValue(entity, relationName, []);
-                continue;
+                return;
             }
 
             const fetch = this._buildCollectionFetchFields(relation, relationConfig, modelRegistry);
@@ -243,10 +276,10 @@ export class RelationshipLoader {
             });
 
             this._setRelationshipValue(entity, relationName, relatedEntities);
-        }
+        }));
     }
 
-    private _getCollectionField(entity: any, relationName: string, foreignKey?: string): any {
+    private _getCollectionField(entity: IRelationshipEntity, relationName: string, foreignKey?: string): unknown {
         const data = entity?._data || entity;
         if (!data || typeof data !== 'object') {
             return null;
@@ -263,7 +296,7 @@ export class RelationshipLoader {
         return null;
     }
 
-    private _buildCollectionFetchFields(relation: any, relationConfig: IIncludeConfig, modelRegistry: Record<string, any>): string[] {
+    private _buildCollectionFetchFields(relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry): string[] {
         const fetchFields = new Set<string>(['ObjectID']);
 
         for (const leaf of this._collectScalarLeaves(relationConfig)) {
@@ -286,12 +319,16 @@ export class RelationshipLoader {
     /**
      * Load inverse foreign key relationships
      */
-    private async _loadInverseForeignKeyRelation(entities: any[], relationName: string, relation: any, relationConfig: IIncludeConfig, modelRegistry: Record<string, any>): Promise<void> {
+    private async _loadInverseForeignKeyRelation(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry): Promise<void> {
         const entityRefs = entities
             .map(e => e._ref)
-            .filter(Boolean);
+            .filter((ref): ref is string => typeof ref === 'string' && ref.length > 0);
 
         if (entityRefs.length === 0) { return; }
+        if (!relation.foreignKey || !relation.entity) {
+            this._warn(`RelationshipLoader: relation ${relationName} is missing foreignKey or entity`);
+            return;
+        }
 
         const query = this._buildInverseQuery(relation.foreignKey, entityRefs);
 
@@ -341,7 +378,11 @@ export class RelationshipLoader {
     /**
      * Extract foreign key value from entity
      */
-    private _extractForeignKeyValue(entity: any, foreignKey: string): string | null {
+    private _extractForeignKeyValue(entity: IRelationshipEntity, foreignKey: string | undefined): string | null {
+        if (!foreignKey) {
+            return null;
+        }
+
         const value = entity._data ? entity._data[foreignKey] : entity[foreignKey];
 
         if (!value) { return null; }
@@ -372,7 +413,8 @@ export class RelationshipLoader {
     /**
      * Batch load entities by their references
      */
-    private async _batchLoadByRefs(entityType: string, refs: string[], extraFetchFields: string[] = []): Promise<any[]> {
+    private async _batchLoadByRefs(entityType: string | undefined, refs: string[], extraFetchFields: string[] = []): Promise<IRelationshipEntity[]> {
+        if (!entityType) { return []; }
         if (refs.length === 0) { return []; }
 
         const uncachedRefs = refs.filter(ref => {
@@ -393,7 +435,7 @@ export class RelationshipLoader {
                     query,
                     fetch: fetch.join(','),
                     pagesize: 2000
-                });
+                }) as IRelationshipEntity[];
 
                 for (const entity of entities) {
                     if (entity._ref) {
@@ -412,7 +454,7 @@ export class RelationshipLoader {
                 const rel = this._toRelativeRef(ref) as string;
                 return this.cache.get(rel) || this.cache.get(this._toAbsoluteRef(rel) as string) || this.cache.get(ref);
             })
-            .filter(Boolean);
+            .filter((entity): entity is IRelationshipEntity => Boolean(entity));
     }
 
     /**
@@ -456,16 +498,16 @@ export class RelationshipLoader {
         return `(${conditions.join(' OR ')})`;
     }
 
-    private _toAbsoluteRef(rel: string): string | null | undefined {
+    private _toAbsoluteRef(rel: string | null | undefined): string | null | undefined {
         const baseUrl = this.client?.baseUrl || '';
         return toAbsoluteRef(rel, baseUrl);
     }
 
-    private _toRelativeRef(ref: string): string | null | undefined {
+    private _toRelativeRef(ref: string | null | undefined): string | null | undefined {
         return toRelativeRef(ref);
     }
 
-    private _setCacheEntry(key: string, value: any): void {
+    private _setCacheEntry(key: string, value: IRelationshipEntity): void {
         if (!key) {
             return;
         }
@@ -485,16 +527,22 @@ export class RelationshipLoader {
         }
     }
 
-    private _stripWsapiPrefix(path: string): string | null | undefined {
-        return stripWsapiPrefix(path);
-    }
-
     /**
      * Load tags by names
      */
-    private async _loadTagsByNames(tagNames: any[]): Promise<any[]> {
+    private async _loadTagsByNames(tagNames: unknown[]): Promise<IRelationshipEntity[]> {
         const names = (Array.isArray(tagNames) ? tagNames : [])
-            .map(n => (typeof n === 'string') ? n : (n && typeof n.Name === 'string') ? n.Name : String(n))
+            .map(n => {
+                if (typeof n === 'string') {
+                    return n;
+                }
+
+                if (n && typeof n === 'object' && 'Name' in n && typeof (n as { Name?: unknown }).Name === 'string') {
+                    return (n as { Name: string }).Name;
+                }
+
+                return String(n);
+            })
             .filter(n => typeof n === 'string' && n.length > 0);
         const query = names
             .map(name => `(Name = "${name.replace(/"/g, '\\"')}")`)
@@ -512,7 +560,7 @@ export class RelationshipLoader {
     /**
      * Set relationship value on entity
      */
-    private _setRelationshipValue(entity: any, relationName: string, value: any): void {
+    private _setRelationshipValue(entity: IRelationshipEntity, relationName: string, value: unknown): void {
         if (entity._data) {
             entity._data[relationName] = value;
         } else {
@@ -527,8 +575,8 @@ export class RelationshipLoader {
     /**
      * Extract related entities for nested loading
      */
-    private _extractRelatedEntities(entities: any[], relationName: string): any[] {
-        const relatedEntities: any[] = [];
+    private _extractRelatedEntities(entities: IRelationshipEntity[], relationName: string): IRelationshipEntity[] {
+        const relatedEntities: IRelationshipEntity[] = [];
 
         for (const entity of entities) {
             const relationValue = entity._data ? entity._data[relationName] : entity[relationName];

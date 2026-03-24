@@ -2,7 +2,7 @@ import { RallyClient, type IRallyClientConfig } from './rally-client.js';
 import { RallyRepository } from './rally-repository.js';
 import { RallyEntity } from '../models/base-entity.js';
 import { normalizeEntityType } from './ref-utils.js';
-import { MODEL_REGISTRY } from '../models/registry.js';
+import { MODEL_REGISTRY, type RallyModelClass } from '../models/registry.js';
 
 // Core artifacts
 import { UserStory } from '../models/user-story.js';
@@ -153,8 +153,8 @@ import { AttachmentContent } from '../models/attachments/attachment-content.js';
  */
 export class RallyDataSource {
     readonly client: RallyClient;
-    private _repositoryCache: Map<string, RallyRepository<any>>;
-    private readonly modelRegistry: Record<string, any>;
+    private _repositoryCache: Map<string, RallyRepository<RallyEntity>>;
+    private readonly modelRegistry: Record<string, RallyModelClass>;
 
     /**
      * Create a data source with the provided Rally client configuration.
@@ -174,17 +174,17 @@ export class RallyDataSource {
      * Get a repository for the specified entity type or model class.
      * Supports hybrid approach: getRepository(ModelClass) or getRepository('entityType')
      */
-    getRepository<T extends RallyEntity>(entityTypeOrClass: string | typeof RallyEntity | any): RallyRepository<T> {
+    getRepository<T extends RallyEntity>(entityTypeOrClass: string | typeof RallyEntity): RallyRepository<T> {
         let entityType: string;
         let ModelClass: typeof RallyEntity;
 
-        if (typeof entityTypeOrClass === 'function' && entityTypeOrClass.entityType) {
+        if (typeof entityTypeOrClass === 'function' && typeof entityTypeOrClass.entityType === 'string') {
             entityType = normalizeEntityType(entityTypeOrClass.entityType) || entityTypeOrClass.entityType;
             ModelClass = entityTypeOrClass;
         }
         else if (typeof entityTypeOrClass === 'string') {
             entityType = normalizeEntityType(entityTypeOrClass) || entityTypeOrClass;
-            ModelClass = this.modelRegistry[entityType] || RallyEntity;
+            ModelClass = (this.modelRegistry[entityType] as typeof RallyEntity | undefined) || RallyEntity;
         }
         else {
             throw new Error('Repository requires a model class with entityType or entity type string');
@@ -219,7 +219,7 @@ export class RallyDataSource {
     /**
      * Get the model registry (read-only access for internal entity use)
      */
-    getModelRegistry(): Readonly<Record<string, any>> {
+    getModelRegistry(): Readonly<Record<string, RallyModelClass>> {
         return this.modelRegistry;
     }
 

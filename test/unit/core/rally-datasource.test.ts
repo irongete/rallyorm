@@ -23,6 +23,12 @@ describe('RallyDataSource', () => {
         expect(repository.modelClass).to.equal(Project);
     });
 
+    it('should reject repository lookups with unsupported inputs', () => {
+        const dataSource = new RallyDataSource({ apiKey: 'test-key' });
+
+        expect(() => dataSource.getRepository({} as never)).to.throw('Repository requires a model class with entityType or entity type string');
+    });
+
     it('should expose a typed repository getter for connections', () => {
         const dataSource = new RallyDataSource({ apiKey: 'test-key' });
 

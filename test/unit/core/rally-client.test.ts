@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import { readFileSync } from 'node:fs';
 import { RallyClient } from '../../../src/core/rally-client.js';
 import { createMockFetch } from '../../setup/test-helpers.js';
 
@@ -37,6 +38,26 @@ async function expectAsyncError(fn: () => Promise<unknown>, pattern: RegExp): Pr
     }
 }
 
+function loadPackageVersion(): string {
+    const candidatePaths = [
+        new URL('../../../package.json', import.meta.url),
+        new URL('../../../../package.json', import.meta.url)
+    ];
+
+    for (const candidatePath of candidatePaths) {
+        try {
+            const packageJson = JSON.parse(readFileSync(candidatePath, 'utf8')) as { version?: string };
+            if (typeof packageJson.version === 'string') {
+                return packageJson.version;
+            }
+        } catch {}
+    }
+
+    throw new Error('Could not load package.json version for RallyClient tests');
+}
+
+const packageVersion = loadPackageVersion();
+
 describe('RallyClient', function () {
     this.timeout(5000);
 
@@ -68,6 +89,53 @@ describe('RallyClient', function () {
                 apiKey: 'test-key',
                 authMode: 'invalid' as any
             })).to.throw('authMode');
+        });
+
+        it('should set a User-Agent header with the package version', () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                fetch: createMockFetch({})
+            });
+
+            expect((client as any).defaultHeaders['User-Agent']).to.equal(`RallyORM/${packageVersion}`);
+        });
+
+        it('should honor RALLY_MAX_CONCURRENT_REQUESTS when queueOptions.concurrency is not set', async () => {
+            await withEnv({
+                RALLY_MAX_CONCURRENT_REQUESTS: '3'
+            }, () => {
+                const client = new RallyClient({
+                    apiKey: 'test-key',
+                    fetch: createMockFetch({})
+                });
+
+                expect((client as any).queue.concurrency).to.equal(3);
+            });
+        });
+
+        it('should let queueOptions.concurrency override RALLY_MAX_CONCURRENT_REQUESTS', async () => {
+            await withEnv({
+                RALLY_MAX_CONCURRENT_REQUESTS: '3'
+            }, () => {
+                const client = new RallyClient({
+                    apiKey: 'test-key',
+                    fetch: createMockFetch({}),
+                    queueOptions: { concurrency: 7 }
+                });
+
+                expect((client as any).queue.concurrency).to.equal(7);
+            });
+        });
+
+        it('should reject invalid RALLY_MAX_CONCURRENT_REQUESTS values', async () => {
+            await withEnv({
+                RALLY_MAX_CONCURRENT_REQUESTS: '0'
+            }, () => {
+                expect(() => new RallyClient({
+                    apiKey: 'test-key',
+                    fetch: createMockFetch({})
+                })).to.throw('RALLY_MAX_CONCURRENT_REQUESTS');
+            });
         });
     });
 

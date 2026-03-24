@@ -1,8 +1,13 @@
-import type { RallyEntity } from './base-entity.js';
+import type { IFieldDefinition, IRelationDefinition, RallyEntity } from './base-entity.js';
 
-type RallyModelClass = {
+type RallyModelConstructor = abstract new (...args: any[]) => RallyEntity;
+
+export type RallyModelClass = RallyModelConstructor & {
     entityType: string | null;
     prototype: RallyEntity;
+    fields: Record<string, IFieldDefinition>;
+    relations: Record<string, IRelationDefinition>;
+    name: string;
 };
 
 import { Attachment } from './attachment.js';

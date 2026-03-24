@@ -221,7 +221,9 @@ export class RallyClient {
                 let pretty = value;
                 try {
                     pretty = decodeURIComponent(value);
-                } catch {}
+                } catch (error: any) {
+                    this.logger?.debug?.(`Could not decode query parameter "${key}" while formatting URL for logs:`, error.message);
+                }
                 pairs.push(`${key}=${pretty}`);
             });
 
@@ -319,7 +321,9 @@ export class RallyClient {
                         this._jsessionCookie = jsess;
                         this.logger.debug('Captured JSESSIONID cookie for sticky session');
                     }
-                } catch {}
+                } catch (error: any) {
+                    this.logger.debug('Could not capture JSESSIONID cookie for sticky session:', error.message);
+                }
 
 
                 if (!response.ok) {
@@ -914,8 +918,15 @@ export class RallyClient {
      */
     private _buildQueueOptions(options: IRallyClientConfig): IQueueOptions {
         const { queueOptions = {} } = options;
+        const envConcurrency = process.env.RALLY_MAX_CONCURRENT_REQUESTS;
+        const resolvedConcurrency = queueOptions.concurrency ?? (
+            envConcurrency === undefined
+                ? 10
+                : this._normalizeIntegerOption(envConcurrency, 'RALLY_MAX_CONCURRENT_REQUESTS', 1)
+        );
+
         return {
-            concurrency: 10,
+            concurrency: resolvedConcurrency,
             interval: 1000,
             intervalCap: 100,
             ...queueOptions
@@ -939,17 +950,24 @@ export class RallyClient {
      * Load package version for User-Agent header
      */
     private _loadPackageVersion(): string {
-        try {
-            const __filename = fileURLToPath(import.meta.url);
-            const __dirname = dirname(__filename);
-            const pkgPath = join(__dirname, '..', '..', 'package.json');
-            const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
-            if (pkg && typeof pkg.version === 'string') {
-                return pkg.version;
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = dirname(__filename);
+        const candidatePaths = [
+            join(__dirname, '..', '..', 'package.json'),
+            join(__dirname, '..', '..', '..', 'package.json')
+        ];
+
+        for (const pkgPath of candidatePaths) {
+            try {
+                const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+                if (pkg && typeof pkg.version === 'string') {
+                    return pkg.version;
+                }
+            } catch (error: any) {
+                this.logger?.debug?.(`Could not load package version from ${pkgPath}:`, error.message);
             }
-        } catch (error: any) {
-            this.logger?.debug?.('Could not load package version:', error.message);
         }
+
         return '0.0.0';
     }
 

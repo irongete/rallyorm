@@ -1,0 +1,87 @@
+{
+  "name": "rallyorm",
+  "version": "1.0.0",
+  "description": "ORM for Rally API. Simplifies integration and management of Rally entities in Node.js with modern async/await patterns.",
+  "main": "dist/src/index.js",
+  "module": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./utils": {
+      "types": "./dist/src/utils/index.d.ts",
+      "import": "./dist/src/utils/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "SECURITY.md"
+  ],
+  "scripts": {
+    "build": "rimraf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "test": "npm run typecheck && tsc -p tsconfig.test-typecheck.json --noEmit && rimraf .test-dist && tsc -p tsconfig.test.json && mocha \".test-dist/test/unit/**/*.js\"",
+    "test:live": "npm run typecheck && tsc -p tsconfig.test-typecheck.json --noEmit && rimraf .test-dist && tsc -p tsconfig.test.json && mocha \".test-dist/test/integration/**/*.js\" --reporter spec",
+    "test:watch": "cross-env TS_NODE_TRANSPILE_ONLY=true mocha --node-option import=./test/setup/register-ts-node.mjs \"test/unit/**/*.ts\" --watch --reporter spec",
+    "coverage": "c8 -r=text-summary -r=html -r=json npm run test",
+    "lint": "eslint . --max-warnings=0",
+    "release:check": "npm run lint && npm run test && npm run build && node test/smoke/package-consumer.mjs && npm pack --dry-run",
+    "release:check:live": "cross-env RALLY_INTEGRATION=1 npm run release:check && cross-env RALLY_INTEGRATION=1 npm run test:live",
+    "prepublishOnly": "npm run release:check"
+  },
+  "keywords": [
+    "rally",
+    "orm",
+    "api",
+    "nodejs",
+    "typescript",
+    "esm",
+    "repository",
+    "client",
+    "repository-pattern",
+    "async",
+    "await",
+    "ca-agile-central",
+    "custom-fields"
+  ],
+  "author": "Gonzalo López Membrive <irongete@gmail.com>",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/irongete/rallyorm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/irongete/rallyorm/issues"
+  },
+  "homepage": "https://github.com/irongete/rallyorm#readme",
+  "dependencies": {
+    "p-queue": "^6.6.2",
+    "p-retry": "^4.6.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.34.0",
+    "@types/chai": "^5.2.3",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^25.0.9",
+    "c8": "^10.1.3",
+    "chai": "^5.1.1",
+    "cross-env": "^10.1.0",
+    "dotenv": "^16.4.5",
+    "eslint": "^9.34.0",
+    "globals": "^16.3.0",
+    "mocha": "^11.3.0",
+    "rimraf": "^6.1.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.57.1"
+  }
+}

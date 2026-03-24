@@ -1,0 +1,134 @@
+import { expect } from 'chai';
+import { LazyLink } from '../../../src/core/lazy-link.js';
+import { RallyEntity } from '../../../src/models/base-entity.js';
+
+describe('Lazy Loading', () => {
+
+    describe('LazyLink', () => {
+        it('should initialize with data', () => {
+            const link = new LazyLink({ _ref: '/story/1', Name: 'S1' }, null);
+            expect(link._ref).to.equal('/story/1');
+            expect(link.Name).to.equal('S1');
+        });
+
+        it('should hide _dataSource property', () => {
+            const link = new LazyLink({}, { getRepository: () => ({ findOne: async () => null }) } as any);
+            const keys = Object.keys(link);
+            expect(keys).to.not.include('_dataSource');
+        });
+
+        it('should load entity using dataSource', async () => {
+            const mockRepo = {
+                findOne: async (ref: string) => new RallyEntity({ _ref: ref, Name: 'Loaded' })
+            };
+            const mockDataSource = {
+                getRepository: (type: string) => {
+                    expect(type).to.equal('story');
+                    return mockRepo;
+                }
+            };
+
+            const link = new LazyLink({ _ref: '/story/123' }, mockDataSource as any);
+            const loaded = await link.load();
+
+            expect(loaded?.toJSON()).to.deep.equal({ _ref: '/story/123', Name: 'Loaded' });
+        });
+
+        it('should resolve slash-delimited entity types during load', async () => {
+            const mockRepo = {
+                findOne: async (ref: string) => new RallyEntity({ _ref: ref, Name: 'Loaded Feature' })
+            };
+            const mockDataSource = {
+                getRepository: (type: string) => {
+                    expect(type).to.equal('portfolioitem/feature');
+                    return mockRepo;
+                }
+            };
+
+            const link = new LazyLink({ _ref: '/portfolioitem/feature/123' }, mockDataSource as any);
+            const loaded = await link.load();
+
+            expect(loaded?.toJSON()).to.deep.equal({ _ref: '/portfolioitem/feature/123', Name: 'Loaded Feature' });
+        });
+    });
+
+    describe('RallyEntity Integration', () => {
+        it('should return LazyLink for relationships with _ref', () => {
+            const mockDataSource = { getRepository: () => ({ findOne: async () => null }) };
+            const context = { dataSource: mockDataSource };
+
+            class TestStory extends RallyEntity {
+                static relations = {
+                    Project: { type: 'belongsTo', entity: 'project', foreignKey: 'Project' }
+                };
+            }
+
+            const data = {
+                Name: 'Story 1',
+                Project: { _ref: '/project/999', Name: 'Project X' }
+            };
+
+            const story = new TestStory(data, context as any);
+
+            const projectLink = story.Project;
+
+            expect(projectLink).to.be.instanceOf(LazyLink);
+            expect(projectLink._ref).to.equal('/project/999');
+            expect(projectLink.Name).to.equal('Project X');
+            expect(typeof projectLink.load).to.equal('function');
+        });
+
+        it('should return regular value if no _ref', () => {
+            const context = { dataSource: { getRepository: () => ({ findOne: async () => null }) } };
+            class TestStory extends RallyEntity {
+                static relations = {
+                    Project: { type: 'belongsTo', entity: 'project', foreignKey: 'Project' }
+                };
+            }
+            const data = { Project: { Name: 'Just Name' } };
+            const story = new TestStory(data, context as any);
+
+            expect(story.Project).to.not.be.instanceOf(LazyLink);
+            expect(story.Project).to.deep.equal({ Name: 'Just Name' });
+        });
+
+        it('should return regular value if no context', () => {
+            class TestStory extends RallyEntity {
+                static relations = {
+                    Project: { type: 'belongsTo', entity: 'project', foreignKey: 'Project' }
+                };
+            }
+            const data = { Project: { _ref: '/p/1' } };
+            const story = new TestStory(data);
+
+            expect(story.Project).to.not.be.instanceOf(LazyLink);
+        });
+
+        it('should seed LazyLink with relation entity metadata when _type is missing', async () => {
+            const mockRepo = {
+                findOne: async (ref: string) => new RallyEntity({ _ref: ref, Name: 'Feature 1' })
+            };
+            const context = {
+                dataSource: {
+                    getRepository: (type: string) => {
+                        expect(type).to.equal('portfolioitem/feature');
+                        return mockRepo;
+                    }
+                }
+            };
+
+            class TestStory extends RallyEntity {
+                static relations = {
+                    Feature: { type: 'belongsTo', entity: 'portfolioitem/feature', foreignKey: 'Feature' }
+                };
+            }
+
+            const story = new TestStory({ Feature: { _ref: '/portfolioitem/feature/1' } }, context as any);
+            const featureLink = story.Feature as LazyLink;
+
+            expect(featureLink).to.be.instanceOf(LazyLink);
+            expect(featureLink._type).to.equal('portfolioitem/feature');
+            expect((await featureLink.load())?.toJSON()).to.deep.equal({ _ref: '/portfolioitem/feature/1', Name: 'Feature 1' });
+        });
+    });
+});

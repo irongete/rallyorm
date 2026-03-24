@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  schedule:
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Release Gate
+        run: npm run release:check
+
+  live-validation:
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate
+    runs-on: ubuntu-latest
+    env:
+      RALLY_API_KEY: ${{ secrets.RALLY_API_KEY }}
+      RALLY_WORKSPACE: ${{ secrets.RALLY_WORKSPACE }}
+      RALLY_BASE_URL: ${{ secrets.RALLY_BASE_URL }}
+      RALLY_TEST_PROJECT_OID: ${{ secrets.RALLY_TEST_PROJECT_OID }}
+      RALLY_TEST_USERSTORY_OID: ${{ secrets.RALLY_TEST_USERSTORY_OID }}
+      RALLY_TEST_TESTCASE_OID: ${{ secrets.RALLY_TEST_TESTCASE_OID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Skip when live validation inputs are unavailable
+        if: env.RALLY_API_KEY == '' || env.RALLY_TEST_PROJECT_OID == ''
+        run: echo "Skipping live validation because RALLY_API_KEY or RALLY_TEST_PROJECT_OID is not configured in repository secrets."
+
+      - name: Release Gate With Live Rally Validation
+        if: env.RALLY_API_KEY != '' && env.RALLY_TEST_PROJECT_OID != ''
+        run: npm run release:check:live

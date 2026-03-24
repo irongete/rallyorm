@@ -1,0 +1,21 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "outDir": "./.test-dist",
+        "declaration": false,
+        "declarationMap": false,
+        "sourceMap": false,
+        "noEmit": false,
+        "noCheck": true
+    },
+    "include": [
+        "src/**/*",
+        "test/**/*"
+    ],
+    "exclude": [
+        "dist",
+        ".test-dist",
+        "node_modules",
+        "scripts"
+    ]
+}

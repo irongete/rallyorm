@@ -1,0 +1,7 @@
+{
+    "extension": [
+        "js",
+        "ts"
+    ],
+    "timeout": 5000
+}

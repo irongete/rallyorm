@@ -30,7 +30,8 @@
     "lint": "eslint . --max-warnings=0",
     "release:check": "npm run lint && npm run test && npm run build && node test/smoke/package-consumer.mjs && npm pack --dry-run",
     "release:check:live": "cross-env RALLY_INTEGRATION=1 npm run release:check && cross-env RALLY_INTEGRATION=1 npm run test:live",
-    "prepublishOnly": "npm run release:check"
+    "release:check:publish": "node scripts/require-live-release-env.mjs && npm run release:check:live",
+    "prepublishOnly": "npm run release:check:publish"
   },
   "keywords": [
     "rally",

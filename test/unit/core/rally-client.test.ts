@@ -364,6 +364,81 @@ describe('RallyClient', function () {
             const deleted = await client.delete('defect', 123);
             expect(deleted).to.equal(false);
         });
+
+        it('should throw when update response explicitly reports failure even without errors', async () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                allowUpdate: true,
+                fetch: createMockFetch({
+                    '/defect/123': {
+                        OperationResult: {
+                            Success: false,
+                            Errors: [],
+                            Warnings: []
+                        }
+                    }
+                })
+            });
+
+            await expectAsyncError(
+                () => client.update('defect', 123, { Name: 'Broken' }),
+                /response did not confirm success/
+            );
+        });
+
+        it('should throw when create response is ambiguous and does not include an entity payload', async () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                allowCreate: true,
+                fetch: createMockFetch({
+                    '/defect/create.js': {
+                        CreateResult: {
+                            Warnings: []
+                        }
+                    }
+                })
+            });
+
+            await expectAsyncError(
+                () => client.create('defect', { Name: 'Broken' }),
+                /response did not confirm success/
+            );
+        });
+
+        it('should treat root entity payload responses as successful writes', async () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                allowUpdate: true,
+                fetch: createMockFetch({
+                    '/defect/123': {
+                        defect: {
+                            ObjectID: 123,
+                            Name: 'Updated'
+                        }
+                    }
+                })
+            });
+
+            const updated = await client.update('defect', 123, { Name: 'Updated' });
+            expect(updated).to.deep.equal({ ObjectID: 123, Name: 'Updated' });
+        });
+
+        it('should treat delete envelopes without explicit errors as successful deletes', async () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                allowDelete: true,
+                fetch: createMockFetch({
+                    '/defect/123': {
+                        DeleteResult: {
+                            Warnings: []
+                        }
+                    }
+                })
+            });
+
+            const deleted = await client.delete('defect', 123);
+            expect(deleted).to.equal(true);
+        });
     });
 
     describe('Paging Validation', () => {

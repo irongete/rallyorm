@@ -72,6 +72,18 @@ interface IRallyOperationResult {
     success?: boolean;
 }
 
+const PACKAGE_VERSION_CANDIDATE_PATHS = (() => {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+
+    return [
+        join(__dirname, '..', '..', 'package.json'),
+        join(__dirname, '..', '..', '..', 'package.json')
+    ];
+})();
+
+let cachedPackageVersion: string | null = null;
+
 /**
  * Rally API Client with repository pattern interface
  * Provides robust HTTP client with retry logic, rate limiting, and error handling
@@ -739,13 +751,58 @@ export class RallyClient {
         return { op, errors, warnings };
     }
 
+    private _hasStructuredEntityPayload(result: any, type: string): boolean {
+        if (!result || typeof result !== 'object') {
+            return false;
+        }
+
+        if (result.CreateResult?.Object || result.OperationResult?.Object || result.Object) {
+            return true;
+        }
+
+        const entityKey = this._getEntityKey(type);
+        if (result[entityKey]) {
+            return true;
+        }
+
+        const normalizedEntityKey = entityKey.toLowerCase();
+        const lastEntitySegment = normalizedEntityKey.split('/').pop() || normalizedEntityKey;
+
+        return Object.keys(result).some(responseKey => {
+            const normalizedResponseKey = String(responseKey).toLowerCase();
+            return normalizedResponseKey === normalizedEntityKey || normalizedResponseKey === lastEntitySegment;
+        });
+    }
+
+    private _resolveOperationSuccess(action: 'create' | 'update' | 'delete', type: string, result: any, op: any, errors: string[] | null): boolean {
+        if (Array.isArray(errors) && errors.length > 0) {
+            return false;
+        }
+
+        const explicitSuccess = [op?.Success, result?.Success].find(value => typeof value === 'boolean');
+        if (explicitSuccess === false) {
+            return false;
+        }
+
+        if (explicitSuccess === true) {
+            return true;
+        }
+
+        if (action === 'delete') {
+            return Boolean(result?.DeleteResult || result?.OperationResult);
+        }
+
+        return this._hasStructuredEntityPayload(result, type);
+    }
+
     /**
      * Unified OperationResult logging and error handling
      */
     private _logAndHandleOperation(action: 'create' | 'update' | 'delete', type: string, objectId: string | number | undefined, result: any, { throwOnErrors = false } = {}): IRallyOperationResult {
         const { op, errors, warnings } = this._analyzeOperationResult(result);
+        const success = this._resolveOperationSuccess(action, type, result, op, errors);
 
-        this.logger.debug(`[${action}:${type}] opResult: errors=${Array.isArray(errors) ? errors.length : 'n/a'} warnings=${warnings.length}`);
+        this.logger.debug(`[${action}:${type}] opResult: errors=${Array.isArray(errors) ? errors.length : 'n/a'} warnings=${warnings.length} success=${success}`);
 
         const actionLabel = `${action.charAt(0).toUpperCase() + action.slice(1)} ${type}${objectId ? ` ${objectId}` : ''}`;
         if (Array.isArray(errors) && errors.length > 0) {
@@ -753,11 +810,16 @@ export class RallyClient {
             if (throwOnErrors) {
                 throw new Error(`Rally ${action} failed for ${type}${objectId ? ` ${objectId}` : ''}: ${errors.join(' | ')}`);
             }
+        } else if (!success) {
+            const message = `Rally ${action} failed for ${type}${objectId ? ` ${objectId}` : ''}: response did not confirm success`;
+            this.logger.error(message, result);
+            if (throwOnErrors) {
+                throw new Error(message);
+            }
         } else if (warnings.length > 0) {
             this.logger.warn(`${actionLabel} returned warnings:`, warnings);
         }
 
-        const success = Array.isArray(errors) && errors.length === 0;
         return { op, errors, warnings, success };
     }
 
@@ -1038,17 +1100,15 @@ export class RallyClient {
      * Load package version for User-Agent header
      */
     private _loadPackageVersion(): string {
-        const __filename = fileURLToPath(import.meta.url);
-        const __dirname = dirname(__filename);
-        const candidatePaths = [
-            join(__dirname, '..', '..', 'package.json'),
-            join(__dirname, '..', '..', '..', 'package.json')
-        ];
+        if (cachedPackageVersion) {
+            return cachedPackageVersion;
+        }
 
-        for (const pkgPath of candidatePaths) {
+        for (const pkgPath of PACKAGE_VERSION_CANDIDATE_PATHS) {
             try {
                 const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
                 if (pkg && typeof pkg.version === 'string') {
+                    cachedPackageVersion = pkg.version;
                     return pkg.version;
                 }
             } catch (error: any) {
@@ -1056,6 +1116,7 @@ export class RallyClient {
             }
         }
 
+        cachedPackageVersion = '0.0.0';
         return '0.0.0';
     }
 

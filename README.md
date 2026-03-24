@@ -217,13 +217,13 @@ story.customFields.c_MyField = 'Hello';
 - Copy `.env.example` to `.env` for local live validation. Keep `.env` untracked and never commit real credentials.
 - Run live integration tests explicitly: `RALLY_INTEGRATION=1 npm run test:live`
 - Run full release validation with live Rally checks: `npm run release:check:live`
-- Publish: `npm publish` (runs `prepublishOnly` and blocks if `release:check` fails)
+- Publish: `npm publish` (runs `prepublishOnly`, requires live Rally credentials, and blocks unless `release:check:publish` passes)
 
 ### Live Validation Environment
 
 The normal release gate does not require real Rally credentials.
 
-Use live validation only when you want to verify the package against a real Rally environment.
+Publishing does require live validation against a real Rally environment.
 
 Variables used by the live suite:
 
@@ -243,9 +243,30 @@ Typical local flow:
 npm test
 npm run release:check
 npm run release:check:live
+npm publish
 ```
 
 `release:check:live` already enables `RALLY_INTEGRATION=1` internally. You still need the corresponding environment variables to be present.
+
+`npm publish` now runs `release:check:publish`, which fails fast unless `RALLY_API_KEY` and `RALLY_TEST_PROJECT_OID` are present and the live suite passes.
+*** Add File: c:\Users\irongete\Desktop\github\rallyorm\scripts\require-live-release-env.mjs
+const requiredVariables = [
+  'RALLY_API_KEY',
+  'RALLY_TEST_PROJECT_OID'
+];
+
+const missingVariables = requiredVariables.filter(variableName => {
+  const value = process.env[variableName];
+  return typeof value !== 'string' || value.trim().length === 0;
+});
+
+if (missingVariables.length > 0) {
+  console.error(
+    `Stable publish requires live Rally validation. Missing environment variables: ${missingVariables.join(', ')}`
+  );
+  console.error('Set the required live credentials and rerun npm publish or npm run release:check:publish.');
+  process.exit(1);
+}
 
 ## License
 

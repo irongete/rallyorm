@@ -206,4 +206,151 @@ describe('RallyEntity', function () {
             expect(entity.getErrors()).to.have.length(0);
         });
     });
+
+    describe('Custom Fields', () => {
+        it('should return true from hasCustomField when the field has a value', () => {
+            const entity = new RallyEntity({ c_Priority: 'High' });
+
+            expect(entity.hasCustomField('c_Priority')).to.equal(true);
+        });
+
+        it('should return false from hasCustomField when the field is absent', () => {
+            const entity = new RallyEntity({});
+
+            expect(entity.hasCustomField('c_Priority')).to.equal(false);
+        });
+
+        it('should return false from hasCustomField when the field is explicitly null', () => {
+            const entity = new RallyEntity({ c_Priority: null });
+
+            expect(entity.hasCustomField('c_Priority')).to.equal(false);
+        });
+
+        it('should return false from hasCustomField when the field is undefined', () => {
+            const entity = new RallyEntity({ c_Priority: undefined });
+
+            expect(entity.hasCustomField('c_Priority')).to.equal(false);
+        });
+
+        it('should list only c_ prefixed keys from listCustomFields', () => {
+            const entity = new RallyEntity({ Name: 'Test', c_Priority: 'High', c_Team: 'Core' });
+
+            expect(entity.listCustomFields()).to.deep.equal(['c_Priority', 'c_Team']);
+        });
+
+        it('should return an empty array from listCustomFields when there are no custom fields', () => {
+            const entity = new RallyEntity({ Name: 'Test' });
+
+            expect(entity.listCustomFields()).to.deep.equal([]);
+        });
+
+        it('should return all custom field values from getCustomFields', () => {
+            const entity = new RallyEntity({ Name: 'Test', c_Priority: 'High', c_Team: 'Core' });
+
+            expect(entity.getCustomFields()).to.deep.equal({ c_Priority: 'High', c_Team: 'Core' });
+        });
+
+        it('should set multiple custom fields at once via setCustomFields', () => {
+            const entity = new RallyEntity({});
+            entity.setCustomFields({ c_Priority: 'High', c_Team: 'Core' });
+
+            expect(entity.getCustomField('c_Priority')).to.equal('High');
+            expect(entity.getCustomField('c_Team')).to.equal('Core');
+        });
+
+        it('should allow retrieving a custom field value set via setCustomField', () => {
+            const entity = new RallyEntity({});
+            entity.setCustomField('c_MyField', 42);
+
+            expect(entity.getCustomField('c_MyField')).to.equal(42);
+        });
+    });
+
+    describe('Field Defaults', () => {
+        it('should apply an array default to a field with no value', () => {
+            class ModelWithArrayDefault extends RallyEntity {
+                static fields = { Tags: { type: 'array', default: [] as string[] } };
+            }
+            const entity = new ModelWithArrayDefault({});
+            expect((entity as any).Tags).to.deep.equal([]);
+        });
+
+        it('should apply an object default to a field with no value', () => {
+            class ModelWithObjDefault extends RallyEntity {
+                static fields = { Config: { type: 'object', default: { key: 'value' } } };
+            }
+            const entity = new ModelWithObjDefault({});
+            expect((entity as any).Config).to.deep.equal({ key: 'value' });
+        });
+
+        it('should not overwrite existing field values with defaults', () => {
+            class ModelWithDefault extends RallyEntity {
+                static fields = { Priority: { type: 'string', default: 'Low' } };
+            }
+            const entity = new ModelWithDefault({ Priority: 'High' });
+            expect((entity as any).Priority).to.equal('High');
+        });
+    });
+
+    describe('Field Validation', () => {
+        it('should allow null for a nullable required field', () => {
+            class NullableModel extends RallyEntity {
+                static fields = { Notes: { type: 'string', required: true, nullable: true } };
+            }
+            const entity = new NullableModel({ Notes: null });
+            expect(entity.validate()).to.equal(true);
+        });
+
+        it('should fail validation when a required field is empty string', () => {
+            class RequiredModel extends RallyEntity {
+                static fields = { Name: { type: 'string', required: true } };
+            }
+            const entity = new RequiredModel({ Name: '' });
+            expect(entity.validate()).to.equal(false);
+        });
+
+        it('should fail validation when a number field receives a NaN value', () => {
+            class NumberModel extends RallyEntity {
+                static fields = { Estimate: { type: 'number' } };
+            }
+            const entity = new NumberModel({ Estimate: NaN });
+            expect(entity.validate()).to.equal(false);
+        });
+
+        it('should validate min/max constraints on number fields', () => {
+            class BoundedModel extends RallyEntity {
+                static fields = { Score: { type: 'number', min: 0, max: 10 } };
+            }
+            const tooLow = new BoundedModel({ Score: -1 });
+            expect(tooLow.validate()).to.equal(false);
+
+            const tooHigh = new BoundedModel({ Score: 11 });
+            expect(tooHigh.validate()).to.equal(false);
+
+            const valid = new BoundedModel({ Score: 5 });
+            expect(valid.validate()).to.equal(true);
+        });
+
+        it('should validate min/max constraints on integer fields', () => {
+            class IntModel extends RallyEntity {
+                static fields = { Count: { type: 'integer', min: 1, max: 100 } };
+            }
+            const tooLow = new IntModel({ Count: 0 });
+            expect(tooLow.validate()).to.equal(false);
+
+            const tooHigh = new IntModel({ Count: 101 });
+            expect(tooHigh.validate()).to.equal(false);
+
+            const valid = new IntModel({ Count: 50 });
+            expect(valid.validate()).to.equal(true);
+        });
+
+        it('should fail validation when a string field receives a non-string value', () => {
+            class StringModel extends RallyEntity {
+                static fields = { Name: { type: 'string' } };
+            }
+            const entity = new StringModel({ Name: 42 as any });
+            expect(entity.validate()).to.equal(false);
+        });
+    });
 });

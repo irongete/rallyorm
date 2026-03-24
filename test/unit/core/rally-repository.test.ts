@@ -702,5 +702,131 @@ describe('RallyRepository', function () {
                 expect(String(error?.message ?? error)).to.include('Failed to resolve or create Rally tags');
             }
         });
+
+        it('should delegate findOne with a criteria object to findOneBy', async () => {
+            let capturedOptions: any;
+            const client = createMockClient({
+                query: async (_type: string, opts: any) => {
+                    capturedOptions = opts;
+                    return [{ ObjectID: '123', Name: 'Found' }];
+                }
+            });
+            const repo = new RallyRepository('defect', client);
+
+            const result = await repo.findOne({ Name: 'Found' });
+
+            expect(result).to.not.be.null;
+            expect(capturedOptions?.query).to.include('Name');
+        });
+
+        it('should load relationships when include is provided in find()', async () => {
+            let includedPaths: string[] | undefined;
+            const client = createMockClient({
+                query: async () => [mockDefect]
+            });
+            const repo = new RallyRepository('defect', client);
+            repo.relationshipLoader.loadRelationships = async (entities: any, include: string[]) => {
+                includedPaths = include;
+                return entities;
+            };
+            await repo.find({ include: ['Owner'] });
+            expect(includedPaths).to.deep.equal(['Owner']);
+        });
+
+        it('should load relationships when include is provided in findBy()', async () => {
+            let includedPaths: string[] | undefined;
+            const client = createMockClient({
+                query: async () => [mockDefect]
+            });
+            const repo = new RallyRepository('defect', client);
+            repo.relationshipLoader.loadRelationships = async (entities: any, include: string[]) => {
+                includedPaths = include;
+                return entities;
+            };
+            await repo.findBy({ include: ['Owner'] });
+            expect(includedPaths).to.deep.equal(['Owner']);
+        });
+
+        it('should throw when save is called with null', async () => {
+            const repo = new RallyRepository('defect', createMockClient());
+            try {
+                await repo.save(null as any);
+                expect.fail('Expected throw');
+            } catch (e: any) {
+                expect(e.message).to.include('Entity is required');
+            }
+        });
+
+        it('should use entity._data when entity has _data but no toJSON method', async () => {
+            let sentData: any;
+            const client = createMockClient({
+                create: async (_type: string, data: any) => { sentData = data; return { ObjectID: '999', ...data }; }
+            });
+            const repo = new RallyRepository('defect', client);
+            await repo.save({ _data: { Name: 'FromData' } } as any);
+            expect(sentData?.Name).to.equal('FromData');
+        });
+
+        it('should throw when create is called with null entity data', async () => {
+            const repo = new RallyRepository('defect', createMockClient());
+            try {
+                await repo.create(null as any);
+                expect.fail('Expected throw');
+            } catch (e: any) {
+                expect(e.message).to.include('Entity data is required');
+            }
+        });
+
+        it('should throw when update is called with empty objectId', async () => {
+            const repo = new RallyRepository('defect', createMockClient());
+            try {
+                await repo.update('' as any, {});
+                expect.fail('Expected throw');
+            } catch (e: any) {
+                expect(e.message).to.include('ObjectID is required');
+            }
+        });
+
+        it('should throw when update is called with null updateData', async () => {
+            const repo = new RallyRepository('defect', createMockClient());
+            try {
+                await repo.update('123', null as any);
+                expect.fail('Expected throw');
+            } catch (e: any) {
+                expect(e.message).to.include('Update data is required');
+            }
+        });
+
+        it('should throw when delete is called with null objectId', async () => {
+            const repo = new RallyRepository('defect', createMockClient());
+            try {
+                await repo.delete(null as any);
+                expect.fail('Expected throw');
+            } catch (e: any) {
+                expect(e.message).to.include('ObjectID is required');
+            }
+        });
+
+        it('should remove entity by string ID', async () => {
+            let deletedId: string | undefined;
+            const client = createMockClient({
+                delete: async (_type: string, id: string) => { deletedId = id; return true; }
+            });
+            const repo = new RallyRepository('defect', client);
+            const result = await repo.remove('123');
+            expect(result).to.equal(true);
+            expect(deletedId).to.equal('123');
+        });
+
+        it('should pass a raw string where directly through _buildQuery without parsing', () => {
+            const repo = new RallyRepository('defect', createMockClient()) as any;
+            expect(repo._buildQuery('(Name = "Test")')).to.equal('(Name = "Test")');
+        });
+
+        it('should return empty string from _buildQuery for non-object non-string where values', () => {
+            const repo = new RallyRepository('defect', createMockClient()) as any;
+            expect(repo._buildQuery(42)).to.equal('');
+            expect(repo._buildQuery(false)).to.equal('');
+        });
     });
 });

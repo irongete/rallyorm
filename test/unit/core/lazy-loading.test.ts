@@ -153,5 +153,54 @@ describe('Lazy Loading', () => {
             expect(featureLink._type).to.equal('portfolioitem/feature');
             expect((await featureLink.load())?.toJSON()).to.deep.equal({ _ref: '/portfolioitem/feature/1', Name: 'Feature 1' });
         });
+
+        it('should return data without _dataSource from toJSON', () => {
+            const dataSource = { getRepository: () => ({ findOne: async () => null }) } as any;
+            const link = new LazyLink({ _ref: '/story/1', Name: 'Test' }, dataSource);
+
+            const json = link.toJSON();
+
+            expect(json).to.not.have.property('_dataSource');
+            expect(json._ref).to.equal('/story/1');
+            expect(json.Name).to.equal('Test');
+        });
+
+        it('should return null from load when entity type cannot be resolved from the ref', async () => {
+            const dataSource = { getRepository: () => ({ findOne: async () => null }) } as any;
+            // Use a ref that has no recognizable entity type segment
+            const link = new LazyLink({ _ref: '/notvalid' }, dataSource);
+
+            const result = await link.load();
+
+            expect(result).to.be.null;
+        });
+
+        it('should re-throw and log with error argument when repository throws during load', async () => {
+            const loadError = new Error('load failed');
+            const loggedErrors: unknown[] = [];
+
+            const dataSource = {
+                client: {
+                    logger: {
+                        warn: () => {},
+                        error: (_msg: string, err: unknown) => { loggedErrors.push(err); }
+                    }
+                },
+                getRepository: () => ({
+                    findOne: async () => { throw loadError; }
+                })
+            } as any;
+
+            const link = new LazyLink({ _ref: '/story/1', _type: 'story' }, dataSource);
+
+            try {
+                await link.load();
+                expect.fail('Expected load to throw');
+            } catch (thrown: any) {
+                expect(thrown).to.equal(loadError);
+                expect(loggedErrors).to.have.length(1);
+                expect(loggedErrors[0]).to.be.instanceOf(Error);
+            }
+        });
     });
 });

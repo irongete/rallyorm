@@ -737,4 +737,43 @@ describe('RelationshipLoader', () => {
 
         expect(warnings.some(w => w.includes('exceeds maximum depth') && w.includes(deepPath))).to.equal(true);
     });
+
+    it('should return entities unchanged when entityArray is empty but includes are provided', async () => {
+        const loader = new RelationshipLoader(createMockClient() as any);
+        const result = await loader.loadRelationships([], ['Owner']);
+        expect(result).to.deep.equal([]);
+    });
+
+    it('should warn and continue when a relationship load rejects', async () => {
+        class Story extends RallyEntity {
+            static entityType = 'hierarchicalrequirement';
+            static relations = {
+                Feature: { type: 'belongsTo', entity: 'portfolioitem/feature', foreignKey: 'Feature' }
+            };
+        }
+
+        const warnings: string[] = [];
+        const client = createMockClient({
+            logger: {
+                debug: () => {},
+                info: () => {},
+                warn: (msg: string) => { warnings.push(msg); },
+                error: () => {}
+            },
+            queryAll: async () => { throw new Error('Simulated load failure'); }
+        });
+
+        const loader = new RelationshipLoader(client as any);
+        const story = new Story({
+            _ref: '/hierarchicalrequirement/1',
+            _type: 'hierarchicalrequirement',
+            Feature: { _ref: '/portfolioitem/feature/42' }
+        });
+
+        await loader.loadRelationships(story, ['Feature'], {
+            hierarchicalrequirement: Story
+        });
+
+        expect(warnings.some(w => w.includes('Failed'))).to.equal(true);
+    });
 });

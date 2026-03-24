@@ -1067,5 +1067,127 @@ describe('RallyClient', function () {
 
             expect(capturedUrls[0]).to.not.include('workspace');
         });
+
+        it('should log a warning when a create operation succeeds but returns warnings', async () => {
+            const warnMessages: string[] = [];
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                allowCreate: true,
+                logger: {
+                    debug: () => {},
+                    info: () => {},
+                    warn: (...args: any[]) => { warnMessages.push(String(args[0])); },
+                    error: () => {}
+                },
+                fetch: createMockFetch({
+                    'defect/create': {
+                        CreateResult: {
+                            Object: { ObjectID: 123, Name: 'Created' },
+                            Errors: [],
+                            Warnings: ['Field deprecated, use NewField instead']
+                        }
+                    }
+                })
+            });
+
+            const result = await client.create<{ ObjectID: number }>('defect', { Name: 'Test' });
+
+            expect(result.ObjectID).to.equal(123);
+            expect(warnMessages.some(msg => msg.toLowerCase().includes('warning'))).to.equal(true);
+        });
+
+        it('should enable only create when RALLY_ALLOW_CREATE=true is set individually', async () => {
+            await withEnv({
+                RALLY_ALLOW_CREATE: 'true',
+                RALLY_ALLOW_WRITE: undefined,
+                RALLY_READ_ONLY: undefined,
+                RALLY_ALLOW_UPDATE: undefined,
+                RALLY_ALLOW_DELETE: undefined
+            }, () => {
+                const client = new RallyClient({ apiKey: 'test-key', fetch: createMockFetch({}) });
+                const perms = client.getWritePermissions();
+
+                expect(perms.allowCreate).to.equal(true);
+                expect(perms.allowUpdate).to.equal(false);
+                expect(perms.allowDelete).to.equal(false);
+            });
+        });
+
+        it('should enable only update when RALLY_ALLOW_UPDATE=1 is set individually', async () => {
+            await withEnv({
+                RALLY_ALLOW_UPDATE: '1',
+                RALLY_ALLOW_WRITE: undefined,
+                RALLY_READ_ONLY: undefined,
+                RALLY_ALLOW_CREATE: undefined,
+                RALLY_ALLOW_DELETE: undefined
+            }, () => {
+                const client = new RallyClient({ apiKey: 'test-key', fetch: createMockFetch({}) });
+                const perms = client.getWritePermissions();
+
+                expect(perms.allowCreate).to.equal(false);
+                expect(perms.allowUpdate).to.equal(true);
+                expect(perms.allowDelete).to.equal(false);
+            });
+        });
+
+        it('should enable only delete when RALLY_ALLOW_DELETE=true is set individually', async () => {
+            await withEnv({
+                RALLY_ALLOW_DELETE: 'true',
+                RALLY_ALLOW_WRITE: undefined,
+                RALLY_READ_ONLY: undefined,
+                RALLY_ALLOW_CREATE: undefined,
+                RALLY_ALLOW_UPDATE: undefined
+            }, () => {
+                const client = new RallyClient({ apiKey: 'test-key', fetch: createMockFetch({}) });
+                const perms = client.getWritePermissions();
+
+                expect(perms.allowCreate).to.equal(false);
+                expect(perms.allowUpdate).to.equal(false);
+                expect(perms.allowDelete).to.equal(true);
+            });
+        });
+
+        it('should throw when query is called with a non-string type', async () => {
+            const client = new RallyClient({ apiKey: 'test-key', fetch: createMockFetch({}) });
+            await expectAsyncError(() => client.query(null as any), /entity type/i);
+        });
+
+        it('should throw when queryAll is called with a non-string type', async () => {
+            const client = new RallyClient({ apiKey: 'test-key', fetch: createMockFetch({}) });
+            await expectAsyncError(() => client.queryAll(null as any), /entity type/i);
+        });
+
+        it('should respect the timeoutMs option in queryAll', async () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                fetch: async () => ({
+                    ok: true, status: 200, statusText: 'OK',
+                    headers: { get: () => null, getSetCookie: () => [] },
+                    text: async () => JSON.stringify({
+                        QueryResult: { Results: [{ ObjectID: 1 }], TotalResultCount: 1 }
+                    })
+                } as unknown as Response)
+            });
+            const results = await client.queryAll('defect', { timeoutMs: 30000 });
+            expect(results).to.have.length(1);
+        });
+
+        it('should default TotalResultCount to 0 and Results to [] when absent from QueryResult', async () => {
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                fetch: async () => ({
+                    ok: true, status: 200, statusText: 'OK',
+                    headers: { get: () => null, getSetCookie: () => [] },
+                    text: async () => JSON.stringify({ QueryResult: {} })
+                } as unknown as Response)
+            });
+            const results = await client.queryAll('defect');
+            expect(results).to.deep.equal([]);
+        });
+
+        it('should throw when queryCollectionAll is called with a non-string ref', async () => {
+            const client = new RallyClient({ apiKey: 'test-key', fetch: createMockFetch({}) });
+            await expectAsyncError(() => client.queryCollectionAll(null as any), /collection ref/i);
+        });
     });
 });

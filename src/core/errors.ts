@@ -1,23 +1,4 @@
 /**
- * Typed error hierarchy for RallyORM.
- *
- * All errors extend {@link RallyError}, giving consumers a single base to catch
- * plus granular subclasses for targeted handling:
- *
- * ```ts
- * import { RallyError, RallyPermissionError, RallyOperationError } from 'rallyorm';
- *
- * try {
- *   await repo.create(data);
- * } catch (e) {
- *   if (e instanceof RallyPermissionError) { /* write not enabled *\/ }
- *   if (e instanceof RallyOperationError)  { console.log(e.rallyErrors); }
- *   if (e instanceof RallyError)           { console.log(e.code); }
- * }
- * ```
- */
-
-/**
  * Base error for all RallyORM-specific errors.
  * @property code - Machine-readable identifier (e.g. `'OPERATION_ERROR'`, `'PERMISSION_DENIED'`).
  */

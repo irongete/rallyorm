@@ -1,4 +1,5 @@
 import cliProgress, { MultiBar, SingleBar } from 'cli-progress';
+import { format } from 'util';
 import { type IRallyProgressEvent } from './rally-client.js';
 
 /**
@@ -10,6 +11,26 @@ export class TelemetryReporter {
     private activeBars: Map<string, SingleBar> = new Map();
     private progressState: Map<string, { current: number, total: number }> = new Map();
     private completionTimer: NodeJS.Timeout | null = null;
+    private originalConsole: {
+        log: typeof console.log;
+        error: typeof console.error;
+        warn: typeof console.warn;
+        info: typeof console.info;
+    } | null = null;
+
+    /**
+     * Print a message above the progress bars. When no bars are active the
+     * message is written directly to stdout so behaviour is identical to a
+     * plain console.log call.
+     */
+    log(...args: unknown[]): void {
+        const msg = format(...args);
+        if (this.bars) {
+            this.bars.log(msg + '\n');
+        } else {
+            process.stdout.write(msg + '\n');
+        }
+    }
 
     handleProgress(event: IRallyProgressEvent): void {
         this.initializeBars();
@@ -52,7 +73,42 @@ export class TelemetryReporter {
                 hideCursor: true,
                 format: '{title} [\x1b[36m{bar}\x1b[0m] {percentage}% | {value}/{total}'
             }, cliProgress.Presets.shades_classic);
+            this.interceptConsole();
         }
+    }
+
+    /**
+     * Redirects console output through MultiBar.log() so messages are printed
+     * above the progress bars without mixing with or overwriting them.
+     */
+    private interceptConsole(): void {
+        if (this.originalConsole) return;
+
+        const bars = this.bars!;
+        this.originalConsole = {
+            log: console.log.bind(console),
+            error: console.error.bind(console),
+            warn: console.warn.bind(console),
+            info: console.info.bind(console),
+        };
+
+        const makeInterceptor = () => (...args: unknown[]) => {
+            bars.log(format(...args) + '\n');
+        };
+
+        console.log = makeInterceptor();
+        console.error = makeInterceptor();
+        console.warn = makeInterceptor();
+        console.info = makeInterceptor();
+    }
+
+    private restoreConsole(): void {
+        if (!this.originalConsole) return;
+        console.log = this.originalConsole.log;
+        console.error = this.originalConsole.error;
+        console.warn = this.originalConsole.warn;
+        console.info = this.originalConsole.info;
+        this.originalConsole = null;
     }
 
     private checkCompletion(): void {
@@ -71,6 +127,7 @@ export class TelemetryReporter {
             
             if (allDone && this.bars) {
                 this.bars.stop();
+                this.restoreConsole();
                 this.bars = null;
                 this.activeBars.clear();
                 this.progressState.clear();

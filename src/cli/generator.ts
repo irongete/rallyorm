@@ -37,7 +37,8 @@ const KNOWN_DATASOURCE_GETTERS = new Map<string, string>([
     ['testfolder', 'testFolders'],
     ['portfolioitem/initiative', 'initiatives'],
     ['portfolioitem/strategictheme', 'themes'],
-    ['workspace', 'workspaces']
+    ['workspace', 'workspaces'],
+    ['workspaceconfiguration', 'workspaceConfigurations']
 ]);
 
 interface IGeneratedModelEntry {

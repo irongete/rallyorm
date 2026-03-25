@@ -184,5 +184,9 @@ describe('ref-utils', () => {
         it('should return null for null input', () => {
             expect(toRelativeRef(null)).to.be.null;
         });
+
+        it('should return undefined for undefined input', () => {
+            expect(toRelativeRef(undefined)).to.be.undefined;
+        });
     });
 });

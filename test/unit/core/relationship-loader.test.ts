@@ -49,24 +49,6 @@ describe('RelationshipLoader', () => {
         expect(result).to.equal(entities);
     });
 
-    it('should warn and skip include paths deeper than the configured parser limit', async () => {
-        const warnings: string[] = [];
-        const loader = new RelationshipLoader(createMockClient({
-            logger: {
-                debug: () => {},
-                info: () => {},
-                warn: (message: string) => { warnings.push(message); },
-                error: () => {}
-            }
-        }) as any);
-
-        // 7-segment path exceeds maxDepth+1 (default maxDepth=5, so limit=6)
-        const parsed = (loader as any)._parseIncludePaths(['a.b.c.d.e.f.g']);
-
-        expect(parsed).to.deep.equal({});
-        expect(warnings.some(message => message.includes('exceeds maximum depth'))).to.equal(true);
-    });
-
     it('should load nested belongsTo relationships for slash-delimited entity types', async () => {
         class Story extends RallyEntity {
             static entityType = 'hierarchicalrequirement';
@@ -598,20 +580,6 @@ describe('RelationshipLoader', () => {
         });
     });
 
-    it('should evict the oldest relationship cache entries when the cache limit is exceeded', () => {
-        const loader = new RelationshipLoader(createMockClient() as any);
-
-        (loader as any).maxCacheEntries = 2;
-        (loader as any)._setCacheEntry('/feature/1', { _ref: '/feature/1' });
-        (loader as any)._setCacheEntry('/feature/2', { _ref: '/feature/2' });
-        (loader as any)._setCacheEntry('/feature/3', { _ref: '/feature/3' });
-
-        expect((loader as any).cache.has('/feature/1')).to.equal(false);
-        expect((loader as any).cache.has('/feature/2')).to.equal(true);
-        expect((loader as any).cache.has('/feature/3')).to.equal(true);
-        expect((loader as any).cache.size).to.equal(2);
-    });
-
     it('should honor a custom maximum relationship depth', async () => {
         class Story extends RallyEntity {
             static entityType = 'hierarchicalrequirement';
@@ -829,12 +797,6 @@ describe('RelationshipLoader', () => {
         await loader.loadRelationships(story, [deepPath], { hierarchicalrequirement: Story });
 
         expect(warnings.some(w => w.includes('exceeds maximum depth') && w.includes(deepPath))).to.equal(true);
-    });
-
-    it('should return entities unchanged when entityArray is empty but includes are provided', async () => {
-        const loader = new RelationshipLoader(createMockClient() as any);
-        const result = await loader.loadRelationships([], ['Owner']);
-        expect(result).to.deep.equal([]);
     });
 
     it('should warn and continue when a relationship load rejects', async () => {

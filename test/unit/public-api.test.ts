@@ -5,6 +5,12 @@ import {
     RallyClient,
     RallyDataSource,
     RallyRepository,
+    RallyError,
+    RallyValidationError,
+    RallyPermissionError,
+    RallyOperationError,
+    RallyNetworkError,
+    RallyTimeoutError,
     Theme,
     Workspace,
     createCustomFieldAccessor,
@@ -32,6 +38,30 @@ describe('Public API', () => {
         expect(Defect.entityType).to.equal('defect');
         expect(Task.entityType).to.equal('task');
         expect(Project.entityType).to.equal('project');
+    });
+
+    it('should expose the error class hierarchy', () => {
+        expect(RallyError).to.be.a('function');
+        expect(RallyValidationError).to.be.a('function');
+        expect(RallyPermissionError).to.be.a('function');
+        expect(RallyOperationError).to.be.a('function');
+        expect(RallyNetworkError).to.be.a('function');
+        expect(RallyTimeoutError).to.be.a('function');
+
+        const validationErr = new RallyValidationError('bad input');
+        expect(validationErr).to.be.instanceOf(RallyError);
+        expect(validationErr.code).to.equal('VALIDATION_ERROR');
+
+        const operationErr = new RallyOperationError('op failed', ['E1'], ['W1']);
+        expect(operationErr).to.be.instanceOf(RallyError);
+        expect(operationErr.code).to.equal('OPERATION_ERROR');
+        expect(operationErr.rallyErrors).to.deep.equal(['E1']);
+        expect(operationErr.rallyWarnings).to.deep.equal(['W1']);
+
+        const networkErr = new RallyNetworkError('conn refused', 503);
+        expect(networkErr).to.be.instanceOf(RallyError);
+        expect(networkErr.code).to.equal('NETWORK_ERROR');
+        expect(networkErr.statusCode).to.equal(503);
     });
 
     it('should expose representative repositories and core model coverage through the root module', () => {

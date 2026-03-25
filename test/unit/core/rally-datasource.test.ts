@@ -37,7 +37,7 @@ describe('RallyDataSource', () => {
             'userStories', 'defects', 'tasks', 'features', 'iterations', 'releases', 'milestones',
             'projects', 'users', 'tags', 'attachments',
             'testCases', 'testSets', 'testCaseResults', 'testCaseSteps', 'testFolders',
-            'initiatives', 'themes', 'workspaces'
+            'initiatives', 'themes', 'workspaces', 'workspaceConfigurations'
         ];
 
         for (const getter of getterNames) {

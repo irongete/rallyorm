@@ -265,6 +265,18 @@ export class RallyClient {
 
         if (options.telemetry) {
             this._telemetryReporter = new TelemetryReporter();
+            if (options.logger) {
+                // Custom logger bypasses console.* interception — wrap it so its
+                // output is still routed through MultiBar.log() when bars are active.
+                const reporter = this._telemetryReporter;
+                const orig = this._logger;
+                this._logger = {
+                    debug: (...a) => { reporter.log(...a); orig.debug(...a); },
+                    info:  (...a) => { reporter.log(...a); orig.info(...a); },
+                    warn:  (...a) => { reporter.log(...a); orig.warn(...a); },
+                    error: (...a) => { reporter.log(...a); orig.error(...a); },
+                };
+            }
         }
     }
 

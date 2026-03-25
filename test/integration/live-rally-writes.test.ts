@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 
-import Defect from '../../src/models/defect.js';
-import Tag from '../../src/models/tag.js';
+import { Defect } from '../../src/models/core/defect.js';
+import { Tag } from '../../src/models/core/tag.js';
 import { createWritableIntegrationDataSource, getWriteIntegrationSkipReason, loadIntegrationConfig } from '../setup/integration-helpers.js';
 
 const config = loadIntegrationConfig();

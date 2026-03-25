@@ -1,8 +1,8 @@
 import { expect } from 'chai';
 
 import { RallyDataSource } from '../../src/core/rally-datasource.js';
-import TestCase from '../../src/models/test-case.js';
-import UserStory from '../../src/models/user-story.js';
+import { TestCase } from '../../src/models/core/test-case.js';
+import { HierarchicalRequirement as UserStory } from '../../src/models/core/hierarchical-requirement.js';
 import { createIntegrationDataSource, getIntegrationSkipReason, loadIntegrationConfig } from '../setup/integration-helpers.js';
 
 const config = loadIntegrationConfig();

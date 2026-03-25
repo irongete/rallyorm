@@ -54,6 +54,12 @@ export interface IFieldDefinition {
     refType?: string;
     inverseRef?: boolean;
     isCollection?: boolean;
+    isCustom?: boolean;
+    hidden?: boolean;
+    filterable?: boolean;
+    sortable?: boolean;
+    maxFractionalDigits?: number;
+    note?: string;
 }
 
 /**
@@ -69,6 +75,7 @@ export interface IRelationDefinition {
     foreignKey?: string;
     inverseRef?: boolean;
     isCollection?: boolean;
+    readOnly?: boolean;
 }
 
 function cloneEntityValue<T>(value: T): T {
@@ -306,6 +313,12 @@ export class RallyEntity {
                     }
                     if (rules.max !== undefined && value > rules.max) {
                         this._errors.push(`${name} must be <= ${rules.max}`);
+                    }
+                    if (rules.maxFractionalDigits !== undefined && rules.maxFractionalDigits >= 0) {
+                        const fractionalPart = String(value).split('.')[1] ?? '';
+                        if (fractionalPart.length > rules.maxFractionalDigits) {
+                            this._errors.push(`${name} must have at most ${rules.maxFractionalDigits} decimal place${rules.maxFractionalDigits === 1 ? '' : 's'}`);
+                        }
                     }
                 }
             }

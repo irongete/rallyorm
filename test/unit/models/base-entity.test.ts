@@ -1,8 +1,7 @@
 import { expect } from 'chai';
 import { RallyEntity } from '../../../src/models/base-entity.js';
-import Artifact from '../../../src/models/base/artifact.js';
-import Defect from '../../../src/models/defect.js';
-import Project from '../../../src/models/project.js';
+import { HierarchicalRequirement } from '../../../src/models/core/hierarchical-requirement.js';
+import { Project } from '../../../src/models/core/project.js';
 
 describe('RallyEntity', function () {
     this.timeout(5000);
@@ -166,22 +165,21 @@ describe('RallyEntity', function () {
             expect(entity.getErrors()).to.have.length(0);
         });
 
-        it('should validate refType compatibility using model inheritance', () => {
+        it('should validate refType compatibility using model registry', () => {
             class RefModel extends RallyEntity {
                 static fields = {
-                    WorkProduct: { type: 'ref', refType: 'Artifact' },
+                    Story: { type: 'ref', refType: 'HierarchicalRequirement' },
                     Project: { type: 'ref', refType: 'Project' }
                 };
             }
 
             const entity = new RefModel({
-                WorkProduct: { _ref: '/defect/123' },
-                Project: { _ref: '/defect/456' }
+                Story: { _ref: '/hierarchicalrequirement/123' },
+                Project: { _ref: '/hierarchicalrequirement/456' }
             }, {
                 dataSource: {
                     getModelRegistry: () => ({
-                        artifact: Artifact,
-                        defect: Defect,
+                        hierarchicalrequirement: HierarchicalRequirement,
                         project: Project
                     })
                 } as any

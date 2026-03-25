@@ -4,6 +4,7 @@
         "test",
         "dist",
         "node_modules",
-        "scripts"
+        "scripts",
+        "src/rally-models*"
     ]
 }

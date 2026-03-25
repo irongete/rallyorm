@@ -24,7 +24,7 @@ describe('Public API', () => {
         expect(RallyRepository).to.be.a('function');
         expect(Iteration.entityType).to.equal('iteration');
         expect(Workspace.entityType).to.equal('workspace');
-        expect(Theme.entityType).to.equal('portfolioitem/theme');
+        expect(Theme.entityType).to.equal('portfolioitem/strategictheme');
         expect(extendModel).to.be.a('function');
         expect(createCustomFieldAccessor).to.be.a('function');
         expect(isValidCustomFieldName('c_CustomField')).to.equal(true);
@@ -44,6 +44,6 @@ describe('Public API', () => {
         expect(ds.tasks.modelClass).to.equal(Task);
         expect(ds.workspaces.modelClass).to.equal(Workspace);
         expect(ds.getModelRegistry()['project']).to.equal(Project);
-        expect(ds.getModelRegistry()['portfolioitem/theme']).to.equal(Theme);
+        expect(ds.getModelRegistry()['portfolioitem/strategictheme']).to.equal(Theme);
     });
 });

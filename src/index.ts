@@ -28,6 +28,7 @@ export type {
 	IQueueOptions
 } from './core/rally-client.js';
 export { RallyDataSource } from './core/rally-datasource.js';
+export type { IRallyDataSourceOptions } from './core/rally-datasource.js';
 export { RallyRepository } from './core/rally-repository.js';
 export type { IFindOptions } from './core/rally-repository.js';
 
@@ -38,8 +39,6 @@ export {
 	createCustomFieldAccessor
 } from './utils/index.js';
 
-// Base Models
-export * from './models/base/index.js';
 export { RallyEntity } from './models/base-entity.js';
 export type {
 	IRallyEntityData,
@@ -48,28 +47,28 @@ export type {
 	IRelationDefinition
 } from './models/base-entity.js';
 
-// Core Artifacts (Root Level)
-export { UserStory } from './models/user-story.js';
-export { Defect } from './models/defect.js';
-export { Task } from './models/task.js';
-export { TestCase } from './models/test-case.js';
-export { TestSet } from './models/test-set.js';
-export { TestFolder } from './models/test-folder.js';
-export { TestCaseResult } from './models/test-case-result.js';
-export { TestCaseStep } from './models/test-case-step.js';
-export { Feature } from './models/feature.js';
-export { Iteration } from './models/iteration.js';
-export { Release } from './models/release.js';
-export { Milestone } from './models/milestone.js';
-export { Project } from './models/project.js';
-export { User } from './models/user.js';
-export { Tag } from './models/tag.js';
-export { Attachment } from './models/attachment.js';
+// Core Models (generated)
+export { HierarchicalRequirement, HierarchicalRequirement as UserStory } from './models/core/hierarchical-requirement.js';
+export { Defect } from './models/core/defect.js';
+export { Task } from './models/core/task.js';
+export { TestCase } from './models/core/test-case.js';
+export { TestSet } from './models/core/test-set.js';
+export { TestFolder } from './models/core/test-folder.js';
+export { TestCaseResult } from './models/core/test-case-result.js';
+export { TestCaseStep } from './models/core/test-case-step.js';
+export { Feature } from './models/core/feature.js';
+export { Iteration } from './models/core/iteration.js';
+export { Release } from './models/core/release.js';
+export { Milestone } from './models/core/milestone.js';
+export { Project } from './models/core/project.js';
+export { User } from './models/core/user.js';
+export { Tag } from './models/core/tag.js';
+export { Attachment } from './models/core/attachment.js';
 
-// Portfolio
-export { Initiative } from './models/portfolio/initiative.js';
-export { Theme } from './models/portfolio/theme.js';
+// Portfolio (generated)
+export { Initiative } from './models/core/initiative.js';
+export { StrategicTheme, StrategicTheme as Theme } from './models/core/strategic-theme.js';
 
-// Organization
-export { Workspace } from './models/project/workspace.js';
+// Organization (generated)
+export { Workspace } from './models/core/workspace.js';
 

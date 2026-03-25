@@ -13,31 +13,25 @@ export type RallyModelClass = RallyModelConstructor & {
     name: string;
 };
 
-import { Attachment } from './attachment.js';
-import { Defect } from './defect.js';
-import { Feature } from './feature.js';
-import { Iteration } from './iteration.js';
-import { Milestone } from './milestone.js';
-import { Project } from './project.js';
-import { Release } from './release.js';
-import { Tag } from './tag.js';
-import { Task } from './task.js';
-import { TestCaseResult } from './test-case-result.js';
-import { TestCaseStep } from './test-case-step.js';
-import { TestCase } from './test-case.js';
-import { TestFolder } from './test-folder.js';
-import { TestSet } from './test-set.js';
-import { UserStory } from './user-story.js';
-import { User } from './user.js';
-import { Artifact } from './base/artifact.js';
-import { DomainObject } from './base/domain-object.js';
-import { PersistableObject } from './base/persistable-object.js';
-import { PortfolioItem } from './base/portfolio-item.js';
-import { SchedulableArtifact } from './base/schedulable-artifact.js';
-import { WorkspaceDomainObject } from './base/workspace-domain-object.js';
-import { Initiative } from './portfolio/initiative.js';
-import { Theme } from './portfolio/theme.js';
-import { Workspace } from './project/workspace.js';
+import { Attachment } from './core/attachment.js';
+import { Defect } from './core/defect.js';
+import { Feature } from './core/feature.js';
+import { HierarchicalRequirement } from './core/hierarchical-requirement.js';
+import { Initiative } from './core/initiative.js';
+import { Iteration } from './core/iteration.js';
+import { Milestone } from './core/milestone.js';
+import { Project } from './core/project.js';
+import { Release } from './core/release.js';
+import { StrategicTheme } from './core/strategic-theme.js';
+import { Tag } from './core/tag.js';
+import { Task } from './core/task.js';
+import { TestCase } from './core/test-case.js';
+import { TestCaseResult } from './core/test-case-result.js';
+import { TestCaseStep } from './core/test-case-step.js';
+import { TestFolder } from './core/test-folder.js';
+import { TestSet } from './core/test-set.js';
+import { User } from './core/user.js';
+import { Workspace } from './core/workspace.js';
 
 /**
  * Ordered list of all model constructors registered by RallyORM.
@@ -46,32 +40,26 @@ import { Workspace } from './project/workspace.js';
  * single authoritative inventory of the shipped model classes.
  */
 export const MODEL_CLASSES: RallyModelClass[] = [
-    PersistableObject,
-    DomainObject,
-    WorkspaceDomainObject,
-    Artifact,
-    SchedulableArtifact,
-    PortfolioItem,
     Attachment,
     Defect,
     Feature,
+    HierarchicalRequirement,
+    Initiative,
     Iteration,
     Milestone,
     Project,
     Release,
+    StrategicTheme,
     Tag,
     Task,
+    TestCase,
     TestCaseResult,
     TestCaseStep,
-    TestCase,
     TestFolder,
     TestSet,
-    UserStory,
     User,
-    Initiative,
-    Theme,
     Workspace
-];
+] as unknown as RallyModelClass[];
 
 /**
  * Lookup map from normalized Rally entity type to model constructor.

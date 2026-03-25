@@ -27,6 +27,9 @@ async function main() {
     let apiKey = args.find(arg => arg.startsWith('--api-key='))?.split('=')[1];
     let workspaceId = args.find(arg => arg.startsWith('--workspace='))?.split('=')[1];
     let outputDir = args.find(arg => arg.startsWith('--output='))?.split('=')[1] || './src/rally-models';
+    const baseImport = args.find(arg => arg.startsWith('--base-import='))?.split('=').slice(1).join('=');
+    const includeArg = args.find(arg => arg.startsWith('--include='))?.split('=').slice(1).join('=');
+    const include = includeArg ? includeArg.split(',').map(s => s.trim()).filter(Boolean) : undefined;
 
     if (!apiKey) {
         apiKey = await question('What is your Rally API Key (e.g. _abcd1234...)? ');
@@ -44,7 +47,7 @@ async function main() {
     }
 
     try {
-        await generateModels({ apiKey, workspaceId, outputDir });
+        await generateModels({ apiKey, workspaceId, outputDir, baseImport, include });
         console.log(`\nSuccessfully generated RallyORM models in ${outputDir}`);
     } catch (err) {
         console.error('\nError generating models:');

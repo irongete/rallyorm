@@ -3,32 +3,56 @@ import { RallyRepository } from './rally-repository.js';
 import { RallyEntity } from '../models/base-entity.js';
 import { normalizeEntityType } from './ref-utils.js';
 import { MODEL_REGISTRY, type RallyModelClass } from '../models/registry.js';
+import { GENERATED_MODELS } from '../models/generated/index.js';
 import { RallyValidationError } from './errors.js';
 
-// Core artifacts
-import { UserStory } from '../models/user-story.js';
-import { Task } from '../models/task.js';
-import { Project } from '../models/project.js';
-import { Defect } from '../models/defect.js';
-import { TestCase } from '../models/test-case.js';
-import { TestSet } from '../models/test-set.js';
-import { TestCaseResult } from '../models/test-case-result.js';
-import { TestCaseStep } from '../models/test-case-step.js';
-import { TestFolder } from '../models/test-folder.js';
-import { User } from '../models/user.js';
-import { Iteration } from '../models/iteration.js';
-import { Release } from '../models/release.js';
-import { Attachment } from '../models/attachment.js';
-import { Tag } from '../models/tag.js';
-import { Feature } from '../models/feature.js';
-import { Milestone } from '../models/milestone.js';
+// Core models (generated)
+import { HierarchicalRequirement as UserStory } from '../models/core/hierarchical-requirement.js';
+import { Task } from '../models/core/task.js';
+import { Project } from '../models/core/project.js';
+import { Defect } from '../models/core/defect.js';
+import { TestCase } from '../models/core/test-case.js';
+import { TestSet } from '../models/core/test-set.js';
+import { TestCaseResult } from '../models/core/test-case-result.js';
+import { TestCaseStep } from '../models/core/test-case-step.js';
+import { TestFolder } from '../models/core/test-folder.js';
+import { User } from '../models/core/user.js';
+import { Iteration } from '../models/core/iteration.js';
+import { Release } from '../models/core/release.js';
+import { Attachment } from '../models/core/attachment.js';
+import { Tag } from '../models/core/tag.js';
+import { Feature } from '../models/core/feature.js';
+import { Milestone } from '../models/core/milestone.js';
 
-// Portfolio
-import { Initiative } from '../models/portfolio/initiative.js';
-import { Theme } from '../models/portfolio/theme.js';
+// Portfolio (generated)
+import { Initiative } from '../models/core/initiative.js';
+import { StrategicTheme as Theme } from '../models/core/strategic-theme.js';
 
-// Organization
-import { Workspace } from '../models/project/workspace.js';
+// Organization (generated)
+import { Workspace } from '../models/core/workspace.js';
+
+/**
+ * Configuration options for {@link RallyDataSource}.
+ *
+ * Extends {@link IRallyClientConfig} with an optional `models` array that lets
+ * callers inject workspace-specific generated models at runtime. These models
+ * are merged into the built-in registry and override core models when the same
+ * `entityType` is registered in both places.
+ */
+export interface IRallyDataSourceOptions extends IRallyClientConfig {
+    /**
+     * Controls which models are registered alongside the built-in core models.
+     *
+     * - `'generated'` — loads the models from `src/models/generated/`. Throws if
+     *   the generated file is empty (i.e. the generator has not been run yet).
+     * - `(typeof RallyEntity)[]` — explicit array of model classes, e.g. a subset
+     *   of `GENERATED_MODELS` or custom hand-crafted models.
+     *
+     * Omit this option (or don't pass it) to use only the built-in core models.
+     * User-supplied models take precedence over core models with the same `entityType`.
+     */
+    models?: 'generated' | (typeof RallyEntity)[];
+}
 
 /**
  * High-level entry point for working with Rally repositories.
@@ -46,18 +70,42 @@ export class RallyDataSource {
     /**
      * Create a datasource backed by a new {@link RallyClient} instance.
      *
-     * @param clientOptions Client configuration passed directly to {@link RallyClient}.
-     * @throws RallyValidationError When `clientOptions` is missing or invalid.
+     * @param options Client configuration and optional model extensions.
+     * @throws RallyValidationError When `options` is missing or invalid.
      */
-    constructor(clientOptions: IRallyClientConfig) {
-        if (!clientOptions || typeof clientOptions !== 'object') {
+    constructor(options: IRallyDataSourceOptions) {
+        if (!options || typeof options !== 'object') {
             throw new RallyValidationError('Client options are required');
         }
+
+        const { models, ...clientOptions } = options;
 
         this.client = new RallyClient(clientOptions);
         this._repositoryCache = new Map();
 
         this.modelRegistry = { ...MODEL_REGISTRY };
+
+        if (models) {
+            const modelList: (typeof RallyEntity)[] =
+                models === 'generated'
+                    ? (() => {
+                          if (GENERATED_MODELS.length === 0) {
+                              throw new RallyValidationError(
+                                  'No generated models found. Run `npx rallyorm generate --output=src/models/generated` first.'
+                              );
+                          }
+                          return GENERATED_MODELS;
+                      })()
+                    : models;
+
+            for (const ModelClass of modelList) {
+                const entityType = (ModelClass as any).entityType;
+                if (typeof entityType === 'string') {
+                    this.modelRegistry[normalizeEntityType(entityType) || entityType] =
+                        ModelClass as unknown as RallyModelClass;
+                }
+            }
+        }
     }
 
     /**

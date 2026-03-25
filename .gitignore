@@ -29,3 +29,4 @@ coverage
 src/rally-models*/
 rally-models*/
 tmp-models/
+src/models/generated/

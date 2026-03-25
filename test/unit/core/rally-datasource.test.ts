@@ -1,9 +1,10 @@
 import { expect } from 'chai';
 import { RallyDataSource } from '../../../src/core/rally-datasource.js';
-import { Project } from '../../../src/models/project.js';
-import { Theme } from '../../../src/models/portfolio/theme.js';
-import { Workspace } from '../../../src/models/project/workspace.js';
-import { UserStory } from '../../../src/models/user-story.js';
+import { RallyEntity } from '../../../src/models/base-entity.js';
+import { Project } from '../../../src/models/core/project.js';
+import { StrategicTheme } from '../../../src/models/core/strategic-theme.js';
+import { Workspace } from '../../../src/models/core/workspace.js';
+import { HierarchicalRequirement } from '../../../src/models/core/hierarchical-requirement.js';
 
 describe('RallyDataSource', () => {
     it('should expose a comprehensive model registry for core models', () => {
@@ -11,8 +12,8 @@ describe('RallyDataSource', () => {
 
         expect(dataSource.getModelRegistry()['project']).to.equal(Project);
         expect(dataSource.getModelRegistry()['workspace']).to.equal(Workspace);
-        expect(dataSource.getModelRegistry()['portfolioitem/theme']).to.equal(Theme);
-        expect(dataSource.getModelRegistry()['hierarchicalrequirement']).to.equal(UserStory);
+        expect(dataSource.getModelRegistry()['portfolioitem/strategictheme']).to.equal(StrategicTheme);
+        expect(dataSource.getModelRegistry()['hierarchicalrequirement']).to.equal(HierarchicalRequirement);
     });
 
     it('should normalize entity type strings in getRepository lookups', () => {
@@ -68,5 +69,37 @@ describe('RallyDataSource', () => {
 
         expect(repo.entityType).to.equal('project');
         expect(repo.modelClass).to.equal(Project);
+    });
+
+    it('should merge user-supplied models into the registry, overriding core models', () => {
+        class CustomProject extends RallyEntity {
+            static entityType = 'project';
+        }
+
+        const dataSource = new RallyDataSource({
+            apiKey: 'test-key',
+            models: [CustomProject as any]
+        });
+
+        expect(dataSource.getModelRegistry()['project']).to.equal(CustomProject);
+    });
+
+    it('should add new entity types from user-supplied models to the registry', () => {
+        class CustomEpic extends RallyEntity {
+            static entityType = 'portfolioitem/epic';
+        }
+
+        const dataSource = new RallyDataSource({
+            apiKey: 'test-key',
+            models: [CustomEpic as any]
+        });
+
+        expect(dataSource.getModelRegistry()['portfolioitem/epic']).to.equal(CustomEpic);
+        expect(dataSource.getModelRegistry()['project']).to.equal(Project);
+    });
+
+    it('should throw when models is "generated" but the generated stub is empty', () => {
+        expect(() => new RallyDataSource({ apiKey: 'test-key', models: 'generated' }))
+            .to.throw('No generated models found. Run `npx rallyorm generate --output=src/models/generated` first.');
     });
 });

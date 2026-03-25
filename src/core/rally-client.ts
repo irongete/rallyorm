@@ -8,6 +8,19 @@ import {
     RallyNetworkError,
     RallyTimeoutError
 } from './errors.js';
+
+/**
+ * Event payload emitted for tracking the progress of long-running operations.
+ */
+export interface IRallyProgressEvent {
+    operation: 'query' | 'relationship' | 'collection';
+    entityType?: string;
+    relationshipName?: string;
+    level?: number;
+    current: number;
+    total: number;
+}
+
 export {
     RallyError,
     RallyValidationError,
@@ -19,6 +32,7 @@ export {
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { toAbsoluteRef, toRelativeRef } from './ref-utils.js';
+import { TelemetryReporter } from './telemetry-reporter.js';
 
 /**
  * Queue configuration forwarded to the internal request scheduler.
@@ -64,6 +78,8 @@ export interface IRallyClientConfig {
     logger?: IRallyLogger;
     relationshipLoaderOptions?: IRelationshipLoaderOptions;
     fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+    onProgress?: (event: IRallyProgressEvent) => void;
+    telemetry?: boolean;
 }
 
 /**
@@ -188,6 +204,19 @@ export class RallyClient {
     private _jsessionCookie: string | null;
     private _concurrencyRetries: number;
     private readonly _clientOptions: IRallyClientConfig;
+    private _telemetryReporter?: TelemetryReporter;
+
+    /**
+     * Emit a progress event if a handler is configured.
+     * @internal
+     */
+    emitProgress(event: IRallyProgressEvent): void {
+        this._telemetryReporter?.handleProgress(event);
+
+        if (typeof this._clientOptions.onProgress === 'function') {
+            this._clientOptions.onProgress(event);
+        }
+    }
 
     /**
      * Create a new Rally client instance.
@@ -232,6 +261,10 @@ export class RallyClient {
         this.queue = new PQueue(this._buildQueueOptions(options));
 
         this.defaultHeaders = this._buildHeaders(options);
+
+        if (options.telemetry) {
+            this._telemetryReporter = new TelemetryReporter();
+        }
     }
 
     /**
@@ -691,7 +724,8 @@ export class RallyClient {
                 params: { query, fetch, start: nextStart, pagesize: pageSize, order },
                 meta: { op: 'queryAll:page', type, start: nextStart }
             }).then(data => (data?.QueryResult?.Results || []) as T[]),
-            'Operation'
+            'Operation',
+            type
         );
     }
 
@@ -797,7 +831,8 @@ export class RallyClient {
                 start: nextStart,
                 pagesize: pageSize
             }).then(data => (data?.QueryResult?.Results ?? data?.Results ?? []) as T[]),
-            'Collection query'
+            'Collection query',
+            collectionRef
         );
     }
 
@@ -813,7 +848,8 @@ export class RallyClient {
         effectiveMaxResults: number | undefined,
         operationDeadline: number | null,
         fetchPage: (nextStart: number) => Promise<T[]>,
-        context: string
+        context: string,
+        entityType?: string
     ): Promise<T[]> {
         const remainingFromStart = Math.max(0, totalCount - (startIndex - 1));
         const effective = effectiveMaxResults !== undefined
@@ -821,6 +857,13 @@ export class RallyClient {
             : remainingFromStart;
 
         const results = [...firstPageResults];
+        
+        this.emitProgress({
+            operation: context === 'Collection query' ? 'collection' : 'query',
+            entityType,
+            current: Math.min(results.length, effective),
+            total: effective
+        });
 
         if (results.length >= effective) {
             return results.slice(0, effective);
@@ -844,6 +887,14 @@ export class RallyClient {
 
             for (const page of pages) {
                 results.push(...page);
+                
+                this.emitProgress({
+                    operation: context === 'Collection query' ? 'collection' : 'query',
+                    entityType,
+                    current: Math.min(results.length, effective),
+                    total: effective
+                });
+
                 if (results.length >= effective) {
                     return results.slice(0, effective);
                 }

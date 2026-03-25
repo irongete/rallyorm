@@ -139,7 +139,8 @@ export class RelationshipLoader {
                 entitiesByType,
                 relationName,
                 relationConfig,
-                modelRegistry
+                modelRegistry,
+                level
             )
         ));
 
@@ -197,7 +198,7 @@ export class RelationshipLoader {
     /**
      * Load a specific relationship for all entity types
      */
-    private async _loadRelationshipForAllTypes(entitiesByType: Record<string, IRelationshipEntity[]>, relationName: string, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry): Promise<void> {
+    private async _loadRelationshipForAllTypes(entitiesByType: Record<string, IRelationshipEntity[]>, relationName: string, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry, level: number): Promise<void> {
         const results = await Promise.allSettled(Object.entries(entitiesByType).map(async ([entityType, entities]) => {
             const ModelClass = modelRegistry[entityType];
             if (!ModelClass || !ModelClass.relations || !ModelClass.relations[relationName]) {
@@ -205,7 +206,7 @@ export class RelationshipLoader {
             }
 
             const relation = ModelClass.relations[relationName];
-            await this._loadRelationshipBatch(entities, relationName, relation, relationConfig, modelRegistry);
+            await this._loadRelationshipBatch(entities, relationName, relation, relationConfig, modelRegistry, level);
         }));
 
         for (const result of results) {
@@ -218,18 +219,18 @@ export class RelationshipLoader {
     /**
      * Load relationship for a batch of entities
      */
-    private async _loadRelationshipBatch(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry): Promise<void> {
+    private async _loadRelationshipBatch(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry, level: number): Promise<void> {
         if (relation.type === 'belongsTo') {
-            await this._loadBelongsToRelation(entities, relationName, relation, relationConfig);
+            await this._loadBelongsToRelation(entities, relationName, relation, relationConfig, level);
         } else if (relation.type === 'hasMany') {
-            await this._loadHasManyRelation(entities, relationName, relation, relationConfig, modelRegistry);
+            await this._loadHasManyRelation(entities, relationName, relation, relationConfig, modelRegistry, level);
         }
     }
 
     /**
      * Load belongsTo relationships (many-to-one)
      */
-    private async _loadBelongsToRelation(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig): Promise<void> {
+    private async _loadBelongsToRelation(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig, level: number): Promise<void> {
         const foreignKeys = new Set<string>();
         const entityRefMap = new Map<string, IRelationshipEntity[]>();
 
@@ -270,19 +271,21 @@ export class RelationshipLoader {
     /**
      * Load hasMany relationships (one-to-many)
      */
-    private async _loadHasManyRelation(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry): Promise<void> {
+    private async _loadHasManyRelation(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry, level: number): Promise<void> {
         if (relation.isCollection) {
-            await this._loadCollectionRelation(entities, relationName, relation, relationConfig, modelRegistry);
+            await this._loadCollectionRelation(entities, relationName, relation, relationConfig, modelRegistry, level);
         } else {
-            await this._loadInverseForeignKeyRelation(entities, relationName, relation, relationConfig, modelRegistry);
+            await this._loadInverseForeignKeyRelation(entities, relationName, relation, relationConfig, modelRegistry, level);
         }
     }
 
     /**
      * Load Rally collection relationships
      */
-    private async _loadCollectionRelation(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry): Promise<void> {
-        const results = await Promise.allSettled(entities.map(async entity => {
+    private async _loadCollectionRelation(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry, level: number): Promise<void> {
+        let loaded = 0;
+        
+        const processEntity = async (entity: IRelationshipEntity) => {
             const collectionField = this._asCollectionField(this._getCollectionField(entity, relationName, relation.foreignKey));
             if (!collectionField) {
                 this._setRelationshipValue(entity, relationName, []);
@@ -308,6 +311,22 @@ export class RelationshipLoader {
             });
 
             this._setRelationshipValue(entity, relationName, relatedEntities);
+        };
+
+        const results = await Promise.allSettled(entities.map(async entity => {
+            try {
+                await processEntity(entity);
+            } finally {
+                loaded++;
+                this.client.emitProgress({
+                    operation: 'relationship',
+                    entityType: String(relation.entity),
+                    relationshipName: relationName,
+                    level: level + 1,
+                    current: loaded,
+                    total: entities.length
+                });
+            }
         }));
 
         for (const result of results) {
@@ -357,7 +376,7 @@ export class RelationshipLoader {
     /**
      * Load inverse foreign key relationships
      */
-    private async _loadInverseForeignKeyRelation(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry): Promise<void> {
+    private async _loadInverseForeignKeyRelation(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry, level: number): Promise<void> {
         const entityRefs = Array.from(new Set(
             entities
                 .map(entity => this._toRelativeRef(entity._ref))
@@ -390,13 +409,25 @@ export class RelationshipLoader {
         const refChunks = this._chunkArray(entityRefs, this.inverseQueryChunkSize);
         const relatedEntityType = relation.entity;
         const foreignKey = relation.foreignKey;
-        const chunkResults = await Promise.allSettled(refChunks.map(refChunk =>
-            this.client.queryAll(relatedEntityType, {
+        
+        let loaded = 0;
+        const chunkResults = await Promise.allSettled(refChunks.map(async refChunk => {
+            const result = await this.client.queryAll(relatedEntityType, {
                 query: this._buildInverseQuery(foreignKey, refChunk),
                 fetch: Array.from(prefetchFields).join(','),
                 pagesize: 2000
-            })
-        ));
+            });
+            loaded += refChunk.length;
+            this.client.emitProgress({
+                operation: 'relationship',
+                entityType: String(relation.entity),
+                relationshipName: relationName,
+                level: level + 1,
+                current: loaded,
+                total: entityRefs.length
+            });
+            return result;
+        }));
 
         const relatedEntities: any[] = [];
         for (const result of chunkResults) {

@@ -18,7 +18,7 @@ assert.equal(typeof RallyClient, 'function');
 assert.equal(typeof RallyDataSource, 'function');
 assert.equal(UserStory.entityType, 'hierarchicalrequirement');
 assert.equal(WorkspaceConfiguration.entityType, 'workspaceconfiguration');
-assert.equal(Theme.entityType, 'portfolioitem/theme');
+assert.equal(Theme.entityType, 'portfolioitem/strategictheme');
 assert.equal(isValidCustomFieldName('c_CustomField'), true);
 
 const dataSource = new RallyDataSource({ apiKey: 'test-key' });

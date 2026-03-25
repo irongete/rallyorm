@@ -64,10 +64,6 @@ function toFileStem(name: string): string {
     return name.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
 }
 
-function toCamelCase(name: string): string {
-    return name.length === 0 ? name : `${name[0].toLowerCase()}${name.slice(1)}`;
-}
-
 function formatPropertyName(name: string): string {
     return /^[$A-Z_][0-9A-Z_$]*$/i.test(name) ? name : JSON.stringify(name);
 }

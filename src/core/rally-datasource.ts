@@ -30,6 +30,7 @@ import { StrategicTheme as Theme } from '../models/core/strategic-theme.js';
 
 // Organization (generated)
 import { Workspace } from '../models/core/workspace.js';
+import { WorkspaceConfiguration } from '../models/core/workspace-configuration.js';
 
 /**
  * Configuration options for {@link RallyDataSource}.
@@ -328,5 +329,12 @@ export class RallyDataSource {
      */
     get workspaces(): RallyRepository<Workspace> {
         return this.getRepository(this._getRegisteredModel(Workspace));
+    }
+
+    /**
+     * Workspace configurations repository
+     */
+    get workspaceConfigurations(): RallyRepository<WorkspaceConfiguration> {
+        return this.getRepository(this._getRegisteredModel(WorkspaceConfiguration));
     }
 }

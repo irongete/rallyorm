@@ -71,4 +71,5 @@ export { StrategicTheme, StrategicTheme as Theme } from './models/core/strategic
 
 // Organization (generated)
 export { Workspace } from './models/core/workspace.js';
+export { WorkspaceConfiguration } from './models/core/workspace-configuration.js';
 

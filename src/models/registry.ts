@@ -32,6 +32,7 @@ import { TestFolder } from './core/test-folder.js';
 import { TestSet } from './core/test-set.js';
 import { User } from './core/user.js';
 import { Workspace } from './core/workspace.js';
+import { WorkspaceConfiguration } from './core/workspace-configuration.js';
 
 /**
  * Ordered list of all model constructors registered by RallyORM.
@@ -58,7 +59,8 @@ export const MODEL_CLASSES: RallyModelClass[] = [
     TestFolder,
     TestSet,
     User,
-    Workspace
+    Workspace,
+    WorkspaceConfiguration
 ] as unknown as RallyModelClass[];
 
 /**

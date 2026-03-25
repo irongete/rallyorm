@@ -54,6 +54,7 @@ export interface IRelationshipLoaderOptions {
     maxDepth?: number;
     maxCacheEntries?: number;
     inverseQueryChunkSize?: number;
+    collectionConcurrency?: number;
 }
 
 /**

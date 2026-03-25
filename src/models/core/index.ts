@@ -18,6 +18,7 @@ import { TestFolder } from './test-folder.js';
 import { TestSet } from './test-set.js';
 import { User } from './user.js';
 import { Workspace } from './workspace.js';
+import { WorkspaceConfiguration } from './workspace-configuration.js';
 
 export {
     Attachment,
@@ -38,7 +39,8 @@ export {
     TestFolder,
     TestSet,
     User,
-    Workspace
+    Workspace,
+    WorkspaceConfiguration
 };
 
 export const GENERATED_MODELS = [

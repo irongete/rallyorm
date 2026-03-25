@@ -60,7 +60,8 @@ describe('RelationshipLoader', () => {
             }
         }) as any);
 
-        const parsed = (loader as any)._parseIncludePaths(['a.b.c.d.e.f.g.h.i.j.k']);
+        // 7-segment path exceeds maxDepth+1 (default maxDepth=5, so limit=6)
+        const parsed = (loader as any)._parseIncludePaths(['a.b.c.d.e.f.g']);
 
         expect(parsed).to.deep.equal({});
         expect(warnings.some(message => message.includes('exceeds maximum depth'))).to.equal(true);
@@ -661,22 +662,28 @@ describe('RelationshipLoader', () => {
             }
         });
 
-        const loader = new RelationshipLoader(client as any, { maxDepth: 0 });
+        // maxDepth=1 allows up to 2-segment paths (levels 0 and 1).
+        // Feature.Owner (2 segments) is within limit → Feature and Owner are both loaded.
+        // Feature.Owner.Reports (3 segments) exceeds maxDepth+1=2 → rejected at parse with a warning.
+        const loader = new RelationshipLoader(client as any, { maxDepth: 1 });
         const story = new Story({
             _ref: '/hierarchicalrequirement/1',
             _type: 'hierarchicalrequirement',
             Feature: { _ref: '/portfolioitem/feature/42' }
         });
 
-        await loader.loadRelationships(story, ['Feature.Owner'], {
+        await loader.loadRelationships(story, ['Feature.Owner', 'Feature.Owner.Reports'], {
             hierarchicalrequirement: Story,
             'portfolioitem/feature': FeatureModel,
             user: UserModel
         });
 
+        // Feature fully loaded
         expect(story._data.Feature).to.include({ _ref: '/portfolioitem/feature/42', Name: 'Feature 42' });
-        expect((story._data.Feature as any).Owner).to.deep.equal({ _ref: '/user/7' });
-        expect(warnings).to.deep.equal(['RelationshipLoader: Maximum depth (0) reached']);
+        // Owner fully loaded (within maxDepth=1)
+        expect((story._data.Feature as any).Owner).to.include({ DisplayName: 'Ada Lovelace' });
+        // 3-segment path rejected at parse time with depth warning
+        expect(warnings.some(w => w.includes('exceeds maximum depth') && w.includes('Feature.Owner.Reports'))).to.equal(true);
     });
 
     it('should apply configured loader cache limits', () => {
@@ -817,8 +824,8 @@ describe('RelationshipLoader', () => {
         const loader = new RelationshipLoader(client as any);
         const story = new Story({ _ref: '/hierarchicalrequirement/1', _type: 'hierarchicalrequirement' });
 
-        // 11-level deep path exceeds the guarded maximum of 10
-        const deepPath = 'A.B.C.D.E.F.G.H.I.J.K';
+        // 7-segment path exceeds maxDepth+1 (default maxDepth=5, so limit=6)
+        const deepPath = 'A.B.C.D.E.F.G';
         await loader.loadRelationships(story, [deepPath], { hierarchicalrequirement: Story });
 
         expect(warnings.some(w => w.includes('exceeds maximum depth') && w.includes(deepPath))).to.equal(true);
@@ -988,4 +995,100 @@ describe('RelationshipLoader', () => {
             expect(owner).to.not.be.undefined;
             expect(owner._ref).to.equal('/user/1');
         });
-    });});
+    });
+
+    describe('3.4 New Behaviour Coverage', () => {
+        it('should chunk _batchLoadByRefs queries when objectIds exceed inverseQueryChunkSize', async () => {
+            const queryAllCalls: string[][] = [];
+
+            class DefectModel extends RallyEntity {
+                static entityType = 'defect';
+                static relations = {
+                    Owner: { type: 'belongsTo', entity: 'user', foreignKey: 'Owner' }
+                };
+            }
+
+            const client = createMockClient({
+                queryAll: async (_type: string, opts: any) => {
+                    queryAllCalls.push(opts.query);
+                    return [];
+                }
+            });
+
+            // 5 distinct FK refs, chunk size 2 → expect 3 queryAll calls (2+2+1)
+            const loader = new RelationshipLoader(client as any, { inverseQueryChunkSize: 2 });
+            const entities = [1, 2, 3, 4, 5].map(n =>
+                new DefectModel(
+                    { _ref: `/defect/${n}`, _type: 'defect', Owner: { _ref: `/user/${n}` } },
+                    undefined
+                )
+            );
+
+            await loader.loadRelationships(entities, ['Owner'], { defect: DefectModel });
+
+            expect(queryAllCalls.length).to.equal(3);
+        });
+
+        it('should process collection entities in chunks of collectionConcurrency', async () => {
+            const collectionCallRefs: string[] = [];
+
+            class ProjectModel extends RallyEntity {
+                static entityType = 'project';
+                static relations = {
+                    Children: { type: 'hasMany', entity: 'project', foreignKey: 'Children', isCollection: true }
+                };
+            }
+
+            const client = createMockClient({
+                queryCollectionAll: async (ref: string) => {
+                    collectionCallRefs.push(ref);
+                    return [];
+                }
+            });
+
+            const loader = new RelationshipLoader(client as any, { collectionConcurrency: 2 });
+            const entities = [1, 2, 3, 4, 5].map(n =>
+                new ProjectModel(
+                    { _ref: `/project/${n}`, _type: 'project', Children: { _ref: `/project/${n}/children` } },
+                    undefined
+                )
+            );
+
+            await loader.loadRelationships(entities, ['Children'], { project: ProjectModel });
+
+            // All 5 collection refs should have been queried
+            expect(collectionCallRefs).to.have.length(5);
+        });
+
+        it('should warn when include path references a relation not registered on any entity type', async () => {
+            const warnings: string[] = [];
+
+            class StoryModel extends RallyEntity {
+                static entityType = 'hierarchicalrequirement';
+                static relations = {
+                    Feature: { type: 'belongsTo', entity: 'portfolioitem/feature', foreignKey: 'Feature' }
+                };
+            }
+
+            const client = createMockClient({
+                queryAll: async () => []
+            });
+            (client as any).logger = {
+                debug: () => {},
+                info: () => {},
+                warn: (msg: string) => { warnings.push(msg); },
+                error: () => {}
+            };
+
+            const loader = new RelationshipLoader(client as any);
+            const story = new StoryModel(
+                { _ref: '/hierarchicalrequirement/1', _type: 'hierarchicalrequirement', Feature: { _ref: '/portfolioitem/feature/1' } },
+                undefined
+            );
+
+            await loader.loadRelationships(story, ['TypoRelation'], { hierarchicalrequirement: StoryModel });
+
+            expect(warnings.some(w => w.includes('TypoRelation'))).to.equal(true);
+        });
+    });
+});

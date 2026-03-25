@@ -381,6 +381,7 @@ export class RallyRepository<T extends RallyEntity = any> {
      * @returns Number of matching entities reported by Rally.
      */
     async count(where: Record<string, unknown> = {}): Promise<number> {
+        this._warnNonFilterableFields(where);
         const query = this._buildQuery(where);
         return this.client.queryCount(this.entityType, { query });
     }
@@ -408,17 +409,21 @@ export class RallyRepository<T extends RallyEntity = any> {
             return '';
         }
 
+        const conditions: string[] = [];
+
         if (Array.isArray(where.$or)) {
             const orConditions = where.$or.map((condition: any) => this._buildQuery(condition)).filter(Boolean);
-            return orConditions.length > 0 ? `(${orConditions.join(' OR ')})` : '';
+            if (orConditions.length > 0) {
+                conditions.push(`(${orConditions.join(' OR ')})`);
+            }
         }
 
         if (Array.isArray(where.$and)) {
             const andConditions = where.$and.map((condition: any) => this._buildQuery(condition)).filter(Boolean);
-            return andConditions.length > 0 ? `(${andConditions.join(' AND ')})` : '';
+            if (andConditions.length > 0) {
+                conditions.push(`(${andConditions.join(' AND ')})`);
+            }
         }
-
-        const conditions: string[] = [];
 
         for (const [field, value] of Object.entries(where as Record<string, any>)) {
             if (field.startsWith('$')) {
@@ -442,8 +447,12 @@ export class RallyRepository<T extends RallyEntity = any> {
      * Build condition for a single field
      */
     private _buildFieldCondition(field: string, value: any): string {
-        if (value === undefined || value === null) {
+        if (value === undefined) {
             return '';
+        }
+
+        if (value === null) {
+            return `(${this._escapeField(field)} = null)`;
         }
 
         if (Array.isArray(value)) {
@@ -953,8 +962,15 @@ export class RallyRepository<T extends RallyEntity = any> {
                 .filter(Boolean);
 
             const strings = refs.filter(item => typeof item === 'string');
-            const objects = refs.filter(item => typeof item === 'object');
-            let processed = objects;
+            const rawObjects = refs.filter((item): item is { _ref: string } => typeof item === 'object');
+            const seenRefs = new Set<string>();
+            const objects = rawObjects.filter(obj => {
+                const ref = obj._ref;
+                if (seenRefs.has(ref)) { return false; }
+                seenRefs.add(ref);
+                return true;
+            });
+            let processed: Array<{ _ref: string }> = objects;
 
             if (strings.length > 0) {
                 const created = await this._processTagsArray(strings);

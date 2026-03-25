@@ -74,6 +74,39 @@ describe('RallyRepository', function () {
             expect(query).to.include(' OR ');
         });
 
+        it('should AND $or condition with sibling fields', () => {
+            const query = repo._buildQuery({
+                $or: [{ State: 'Open' }, { State: 'Closed' }],
+                Priority: 'High'
+            });
+            expect(query).to.include(' OR ');
+            expect(query).to.include(' AND ');
+            expect(query).to.include('State');
+            expect(query).to.include('Priority');
+        });
+
+        it('should AND $and condition with sibling fields', () => {
+            const query = repo._buildQuery({
+                $and: [{ State: 'Open' }, { Severity: 'Critical' }],
+                Priority: 'High'
+            });
+            expect(query).to.include(' AND ');
+            expect(query).to.include('State');
+            expect(query).to.include('Severity');
+            expect(query).to.include('Priority');
+        });
+
+        it('should emit null equality condition for null field value', () => {
+            const query = repo._buildQuery({ Owner: null });
+            expect(query).to.equal('(Owner = null)');
+        });
+
+        it('should drop undefined field values silently', () => {
+            const query = repo._buildQuery({ Owner: undefined, Name: 'Test' });
+            expect(query).to.not.include('Owner');
+            expect(query).to.include('Name');
+        });
+
         it('should handle array values as implicit $in', () => {
             const query = repo._buildQuery({ State: ['Open', 'Closed'] });
             expect(query).to.include(' OR ');
@@ -409,6 +442,26 @@ describe('RallyRepository', function () {
             }
         });
 
+        it('should deduplicate _ref-based tag objects in write payload', async () => {
+            let entityPayload: any;
+            const client = createMockClient({
+                create: async (type: string, data: any) => {
+                    if (type !== 'tag') { entityPayload = data; }
+                    return { ObjectID: '123', ...data };
+                }
+            });
+            const repo = new RallyRepository('defect', client);
+
+            await repo.save({
+                Name: 'Defect with dup tags',
+                Tags: [{ _ref: '/tag/1' }, { _ref: '/tag/1' }, { _ref: '/tag/2' }]
+            });
+
+            expect(entityPayload.Tags).to.have.length(2);
+            expect(entityPayload.Tags).to.deep.include({ _ref: '/tag/1' });
+            expect(entityPayload.Tags).to.deep.include({ _ref: '/tag/2' });
+        });
+
         it('should resolve existing tags, create missing tags, and preserve deduped order', async () => {
             let entityPayload: any;
             const tagCreates: string[] = [];
@@ -735,6 +788,31 @@ describe('RallyRepository', function () {
 
             expect(result).to.equal(7);
             expect(capturedOptions?.query).to.include('Name');
+        });
+
+        it('should warn on non-filterable fields in count()', async () => {
+            const warnings: string[] = [];
+            const client = createMockClient({
+                queryCount: async () => 3
+            });
+            (client as any).logger = {
+                debug: () => {},
+                info: () => {},
+                warn: (msg: string) => { warnings.push(msg); },
+                error: () => {}
+            };
+
+            class DefectModel extends RallyEntity {
+                static entityType = 'defect';
+                static fields = {
+                    Description: { filterable: false }
+                };
+            }
+
+            const repo = new RallyRepository('defect', client, DefectModel as any);
+            await repo.count({ Description: 'bug' });
+
+            expect(warnings.some(w => w.includes('Description') && w.includes('non-filterable'))).to.equal(true);
         });
 
         it('should return null from findOne when the entity is not found', async () => {

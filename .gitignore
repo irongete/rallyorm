@@ -27,6 +27,6 @@ coverage
 
 # Generated Models
 src/rally-models*/
-rally-models*/
-tmp-models/
-src/models/generated/
+src/models/generated/*
+!src/models/generated/index.ts
+

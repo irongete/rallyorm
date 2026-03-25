@@ -896,21 +896,23 @@ export class RallyClient {
             }
 
             const batch = remainingPages.slice(i, i + batchSize);
-            const pages = await Promise.all(batch.map(fetchPage));
 
-            for (const page of pages) {
+            // Emit progress as each individual page resolves rather than waiting
+            // for the whole batch. This gives the progress bar a smooth update
+            // per request instead of a single jump after all concurrency slots drain.
+            await Promise.all(batch.map(async (nextStart) => {
+                const page = await fetchPage(nextStart);
                 results.push(...page);
-                
                 this.emitProgress({
                     operation: context === 'Collection query' ? 'collection' : 'query',
                     entityType,
                     current: Math.min(results.length, effective),
                     total: effective
                 });
+            }));
 
-                if (results.length >= effective) {
-                    return results.slice(0, effective);
-                }
+            if (results.length >= effective) {
+                return results.slice(0, effective);
             }
         }
 

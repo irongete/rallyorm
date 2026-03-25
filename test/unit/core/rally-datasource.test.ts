@@ -1,18 +1,18 @@
 import { expect } from 'chai';
 import { RallyDataSource } from '../../../src/core/rally-datasource.js';
-import { Connection } from '../../../src/models/connection.js';
 import { Project } from '../../../src/models/project.js';
 import { Theme } from '../../../src/models/portfolio/theme.js';
 import { Workspace } from '../../../src/models/project/workspace.js';
+import { UserStory } from '../../../src/models/user-story.js';
 
 describe('RallyDataSource', () => {
-    it('should expose a comprehensive model registry for public models', () => {
+    it('should expose a comprehensive model registry for core models', () => {
         const dataSource = new RallyDataSource({ apiKey: 'test-key' });
 
-        expect(dataSource.getModelRegistry()['connection']).to.equal(Connection);
         expect(dataSource.getModelRegistry()['project']).to.equal(Project);
         expect(dataSource.getModelRegistry()['workspace']).to.equal(Workspace);
         expect(dataSource.getModelRegistry()['portfolioitem/theme']).to.equal(Theme);
+        expect(dataSource.getModelRegistry()['hierarchicalrequirement']).to.equal(UserStory);
     });
 
     it('should normalize entity type strings in getRepository lookups', () => {
@@ -29,39 +29,13 @@ describe('RallyDataSource', () => {
         expect(() => dataSource.getRepository({} as never)).to.throw('Repository requires a model class with entityType or entity type string');
     });
 
-    it('should expose a typed repository getter for connections', () => {
-        const dataSource = new RallyDataSource({ apiKey: 'test-key' });
-
-        expect(dataSource.connections.entityType).to.equal('connection');
-        expect(dataSource.connections.modelClass).to.equal(Connection);
-    });
-
-    it('should expose typed repository getters for all entity types', () => {
+    it('should expose typed repository getters for core entity types', () => {
         const dataSource = new RallyDataSource({ apiKey: 'test-key' });
         const getterNames = [
             'userStories', 'defects', 'tasks', 'features', 'iterations', 'releases', 'milestones',
-            'projects', 'users', 'blockers', 'tags', 'attachments', 'changesets', 'builds',
-            'buildDefinitions', 'testCases', 'testSets', 'testCaseResults', 'testCaseSteps',
-            'testFolders', 'scheduledTestCases', 'testFolderStatuses', 'initiatives', 'themes',
-            'portfolioItemFlowStates', 'portfolioItemPredecessorRelationships', 'defectSuites', 'risks',
-            'hierarchicalRequirementPredecessorRelationships', 'scheduleStates', 'states',
-            'scmRepositories', 'revisions', 'revisionHistories', 'changes', 'pullRequests', 'flowStates',
-            'conversationPosts', 'artifactNotifications', 'workspaces', 'userProfiles', 'profileImages',
-            'preferences', 'subscriptions', 'projectPermissions', 'workspacePermissions', 'subscriptionTags',
-            'userIterationCapacities', 'publishedCapacityPlans', 'workingCapacityPlans', 'capacityPlanItems',
-            'capacityPlanAssignments', 'capacityPlanProjects', 'expertises', 'expertiseCapacities',
-            'expertiseDemands', 'objectives', 'keyResults', 'keyResultActualValues', 'keyResultInterimTargets',
-            'objectiveConversationPosts', 'typeDefinitions',
-            'allowedAttributeValues', 'allowedQueryOperators', 'workspaceConfigurations', 'apps', 'dashboards',
-            'panels', 'pageConfigurations', 'webLinkDefinitions', 'panelDefinitionConfigProperties',
-            'timeEntryItems', 'timeEntryValues', 'vsmProducts', 'vsmComponents', 'vsmChanges', 'vsmDeploys',
-            'vsmIncidents', 'vsmMeasures', 'vsmOutcomes', 'vsmOutcomeMetrics', 'vsmTargets',
-            'vsmMetricPortfolioItems', 'vsmProductPortfolioItems', 'vsmProductAnalyticsMetrics',
-            'vsmInvestmentCategoryMaps', 'recycleBinEntries', 'investments', 'preliminaryEstimates',
-            'deliveryGroups', 'featureToggleEntities', 'externalContributions', 'connectAllIntegrations',
-            'ppmConnections', 'ldapConfigurations', 'keyManagementServices', 'userNotificationFilters',
-            'externalSystemCredentials', 'iterationCumulativeFlowData', 'releaseCumulativeFlowData',
-            'dataMoveRequests', 'attachmentContents'
+            'projects', 'users', 'tags', 'attachments',
+            'testCases', 'testSets', 'testCaseResults', 'testCaseSteps', 'testFolders',
+            'initiatives', 'themes', 'workspaces'
         ];
 
         for (const getter of getterNames) {

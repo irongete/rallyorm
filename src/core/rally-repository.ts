@@ -119,6 +119,7 @@ export class RallyRepository<T extends RallyEntity = any> {
     async findBy(options: IFindOptions = {}): Promise<T[]> {
         const { where = {}, ...otherOptions } = options;
 
+        this._warnNonFilterableFields(where);
         const query = this._buildQuery(where);
         const normalized = this._normalizeOptions(otherOptions);
         const { include, ...queryOptions } = normalized;
@@ -154,6 +155,7 @@ export class RallyRepository<T extends RallyEntity = any> {
     async findAllBy(options: IFindOptions = {}): Promise<T[]> {
         const { where = {}, ...otherOptions } = options;
 
+        this._warnNonFilterableFields(where);
         const query = this._buildQuery(where);
         const normalized = this._normalizeOptions(otherOptions);
         const { include, ...queryOptions } = normalized;
@@ -627,7 +629,10 @@ export class RallyRepository<T extends RallyEntity = any> {
             normalized.include = explicitInclude;
         }
 
-        if (typeof normalized.order === 'string') { normalized.order = normalized.order.trim(); }
+        if (typeof normalized.order === 'string') {
+            normalized.order = normalized.order.trim();
+            this._warnNonSortableField(normalized.order);
+        }
         if (typeof normalized.fetch === 'string') { normalized.fetch = normalized.fetch.trim(); }
         if (normalized.include && normalized.include.length === 0) { normalized.include = undefined; }
 
@@ -780,15 +785,36 @@ export class RallyRepository<T extends RallyEntity = any> {
             return entity;
         }
 
-        const readOnlyFields = [
+        const cleaned = { ...entity };
+
+        // Always remove system-level metadata fields
+        const systemFields = [
             'ObjectID', '_ref', '_type', '_CreatedAt', '_UpdatedAt',
             'CreationDate', 'LastUpdateDate', '_objectVersion',
             '_rallyAPIMajor', '_rallyAPIMinor', '_refObjectUUID',
             '_tagsNameArray', 'FormattedID'
         ];
+        for (const field of systemFields) {
+            delete cleaned[field];
+        }
 
-        const cleaned = { ...entity };
-        readOnlyFields.forEach(field => delete cleaned[field]);
+        // Also remove fields and relations marked readOnly in the model class hierarchy
+        if (this.modelClass) {
+            let cls: any = this.modelClass;
+            while (cls && cls !== Object) {
+                if (Object.prototype.hasOwnProperty.call(cls, 'fields')) {
+                    for (const [name, def] of Object.entries(cls.fields as Record<string, any>)) {
+                        if (def?.readOnly) delete cleaned[name];
+                    }
+                }
+                if (Object.prototype.hasOwnProperty.call(cls, 'relations')) {
+                    for (const [name, def] of Object.entries(cls.relations as Record<string, any>)) {
+                        if (def?.readOnly) delete cleaned[name];
+                    }
+                }
+                cls = Object.getPrototypeOf(cls);
+            }
+        }
 
         return cleaned;
     }
@@ -798,6 +824,63 @@ export class RallyRepository<T extends RallyEntity = any> {
             && typeof value === 'object'
             && typeof value.getChanges === 'function'
             && typeof value.commit === 'function';
+    }
+
+    /** Walk the model class prototype chain to find a field definition by name. */
+    private _findFieldDef(fieldName: string): Record<string, any> | undefined {
+        if (!this.modelClass) return undefined;
+        let cls: any = this.modelClass;
+        while (cls && cls !== Object) {
+            if (Object.prototype.hasOwnProperty.call(cls, 'fields')) {
+                const def = (cls.fields as Record<string, any>)[fieldName];
+                if (def !== undefined) return def;
+            }
+            cls = Object.getPrototypeOf(cls);
+        }
+        return undefined;
+    }
+
+    /**
+     * Emit a logger warning for each where-clause field marked filterable:false in the model.
+     * Called before building a query string in findBy/findAllBy.
+     */
+    private _warnNonFilterableFields(where: Record<string, any>): void {
+        if (!this.modelClass || !where || typeof where !== 'object') return;
+
+        const check = (obj: Record<string, any>) => {
+            for (const [key, value] of Object.entries(obj)) {
+                if (key === '$or' && Array.isArray(value)) {
+                    value.forEach(cond => check(cond));
+                } else if (key === '$and' && Array.isArray(value)) {
+                    value.forEach(cond => check(cond));
+                } else if (!key.startsWith('$')) {
+                    const fieldName = key.split('.')[0];
+                    const def = this._findFieldDef(fieldName);
+                    if (def?.filterable === false) {
+                        this.client.logger?.warn(
+                            `[${this.entityType}] Field "${fieldName}" is marked as non-filterable — this query may be rejected by Rally`
+                        );
+                    }
+                }
+            }
+        };
+
+        check(where);
+    }
+
+    /**
+     * Emit a logger warning when an order expression references a field marked sortable:false.
+     * Called after order is normalized in _normalizeOptions.
+     */
+    private _warnNonSortableField(order: string): void {
+        if (!this.modelClass || !order) return;
+        const fieldName = order.trim().split(/\s+/)[0];
+        const def = this._findFieldDef(fieldName);
+        if (def?.sortable === false) {
+            this.client.logger?.warn(
+                `[${this.entityType}] Field "${fieldName}" is marked as non-sortable — this order expression may be rejected by Rally`
+            );
+        }
     }
 
     private _isEntityRefLike(val: any): boolean {

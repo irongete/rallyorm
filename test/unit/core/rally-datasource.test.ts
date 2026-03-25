@@ -5,6 +5,7 @@ import { Project } from '../../../src/models/core/project.js';
 import { StrategicTheme } from '../../../src/models/core/strategic-theme.js';
 import { Workspace } from '../../../src/models/core/workspace.js';
 import { HierarchicalRequirement } from '../../../src/models/core/hierarchical-requirement.js';
+import { TestCase } from '../../../src/models/core/test-case.js';
 
 describe('RallyDataSource', () => {
     it('should expose a comprehensive model registry for core models', () => {
@@ -82,6 +83,28 @@ describe('RallyDataSource', () => {
         });
 
         expect(dataSource.getModelRegistry()['project']).to.equal(CustomProject);
+    });
+
+    it('should let built-in getters use registry overrides when generated models replace a core entity', () => {
+        class CustomTestCase extends RallyEntity {
+            static entityType = 'testcase';
+            declare c_CustomField?: string;
+        }
+
+        const dataSource = new RallyDataSource({
+            apiKey: 'test-key',
+            models: [CustomTestCase as any]
+        });
+
+        expect(dataSource.testCases.modelClass).to.equal(CustomTestCase);
+        expect(dataSource.getRepository('testcase').modelClass).to.equal(CustomTestCase);
+    });
+
+    it('should keep core getters on their built-in models when no override is registered', () => {
+        const dataSource = new RallyDataSource({ apiKey: 'test-key' });
+
+        expect(dataSource.testCases.modelClass).to.equal(TestCase);
+        expect(dataSource.projects.modelClass).to.equal(Project);
     });
 
     it('should add new entity types from user-supplied models to the registry', () => {

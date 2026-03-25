@@ -293,29 +293,8 @@ export class RelationshipLoader {
             }
 
             if (Array.isArray(collectionField._tagsNameArray) && collectionField._tagsNameArray.length > 0) {
-                const tagsObjects = collectionField._tagsNameArray.map((t: any) => {
-                    const tag: any = { _type: 'Tag' };
-                    
-                    if (typeof t === 'string') {
-                        tag.Name = t;
-                    } else if (t && typeof t === 'object') {
-                        if (t.Name || t.name) { tag.Name = String(t.Name || t.name); }
-                        if (t._ref) {
-                            const relativeRef = this._toRelativeRef(t._ref);
-                            tag._ref = relativeRef;
-                            if (relativeRef) {
-                                const parts = String(relativeRef).split('/');
-                                const lastPart = parts[parts.length - 1];
-                                if (lastPart && !isNaN(Number(lastPart))) { tag.ObjectID = Number(lastPart); }
-                            }
-                        }
-                    } else {
-                        tag.Name = String(t);
-                    }
-                    return tag;
-                });
-                
-                this._setRelationshipValue(entity, relationName, tagsObjects);
+                const resolved = await this._loadTagsByNames(collectionField._tagsNameArray);
+                this._setRelationshipValue(entity, relationName, resolved);
                 return;
             }
 

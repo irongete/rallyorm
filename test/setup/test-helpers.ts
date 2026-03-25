@@ -16,6 +16,7 @@ export function createMockClient(overrides: any = {}): any {
         create: async (type: string, data: any) => ({ ObjectID: '12345', ...data }),
         update: async (type: string, id: string, data: any) => ({ ObjectID: id, ...data }),
         delete: async () => true,
+        emitProgress: () => {},
         baseUrl: 'https://rally1.rallydev.com/slm/webservice/v2.0',
         logger: {
             debug: () => { },

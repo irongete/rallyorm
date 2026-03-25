@@ -6,6 +6,7 @@ export interface IGeneratorOptions {
     apiKey: string;
     workspaceId: string;
     outputDir: string;
+    baseUrl?: string;
     baseImport?: string;
     /** If provided, only generate models whose ElementName is in this list. */
     include?: string[];
@@ -17,6 +18,40 @@ const STRING_LIKE_TYPES = new Set(['STRING', 'TEXT', 'STATE', 'RATING', 'RAW']);
 /** AttributeTypes for which AllowedValues contain meaningful string enum literals. */
 const ENUM_ELIGIBLE_TYPES = new Set(['STRING', 'STATE', 'RATING']);
 
+const KNOWN_DATASOURCE_GETTERS = new Map<string, string>([
+    ['hierarchicalrequirement', 'userStories'],
+    ['defect', 'defects'],
+    ['task', 'tasks'],
+    ['portfolioitem/feature', 'features'],
+    ['iteration', 'iterations'],
+    ['release', 'releases'],
+    ['milestone', 'milestones'],
+    ['project', 'projects'],
+    ['user', 'users'],
+    ['tag', 'tags'],
+    ['attachment', 'attachments'],
+    ['testcase', 'testCases'],
+    ['testset', 'testSets'],
+    ['testcaseresult', 'testCaseResults'],
+    ['testcasestep', 'testCaseSteps'],
+    ['testfolder', 'testFolders'],
+    ['portfolioitem/initiative', 'initiatives'],
+    ['portfolioitem/strategictheme', 'themes'],
+    ['workspace', 'workspaces']
+]);
+
+interface IGeneratedModelEntry {
+    className: string;
+    entityType: string;
+    fileStem: string;
+}
+
+interface IFrameworkImports {
+    entityImport: string;
+    dataSourceImport: string;
+    repositoryImport: string;
+}
+
 function mapAttributeType(attrType: string): string {
     if (attrType === 'INTEGER') return "'integer'";
     if (attrType === 'QUANTITY' || attrType === 'DECIMAL') return "'number'";
@@ -25,12 +60,110 @@ function mapAttributeType(attrType: string): string {
     return "'string'"; // STRING, TEXT, STATE, RATING, RAW
 }
 
+function toFileStem(name: string): string {
+    return name.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
+}
+
+function toCamelCase(name: string): string {
+    return name.length === 0 ? name : `${name[0].toLowerCase()}${name.slice(1)}`;
+}
+
+function formatPropertyName(name: string): string {
+    return /^[$A-Z_][0-9A-Z_$]*$/i.test(name) ? name : JSON.stringify(name);
+}
+
+function resolveFrameworkImports(outputDir: string, baseImport?: string): IFrameworkImports {
+    const entityImport = resolveBaseImport(outputDir, baseImport);
+    const resolvedOutputDir = path.resolve(outputDir);
+    const workspaceSrcPath = path.resolve(process.cwd(), 'src');
+    const dataSourcePath = path.resolve(process.cwd(), 'src', 'core', 'rally-datasource.ts');
+    const repositoryPath = path.resolve(process.cwd(), 'src', 'core', 'rally-repository.ts');
+    const relativeToSrc = path.relative(workspaceSrcPath, resolvedOutputDir);
+    const isInsideWorkspaceSrc =
+        relativeToSrc === '' ||
+        (!relativeToSrc.startsWith('..') && !path.isAbsolute(relativeToSrc));
+
+    if (isInsideWorkspaceSrc && fs.existsSync(dataSourcePath) && fs.existsSync(repositoryPath)) {
+        return {
+            entityImport,
+            dataSourceImport: path.relative(resolvedOutputDir, replaceTsExtension(dataSourcePath)).replace(/\\/g, '/').replace(/^(?!\.)/, './'),
+            repositoryImport: path.relative(resolvedOutputDir, replaceTsExtension(repositoryPath)).replace(/\\/g, '/').replace(/^(?!\.)/, './')
+        };
+    }
+
+    return {
+        entityImport,
+        dataSourceImport: 'rallyorm',
+        repositoryImport: 'rallyorm'
+    };
+}
+
+function quoteTypeLiteral(value: string): string {
+    return JSON.stringify(value.replace(/\\/g, '\\\\'));
+}
+
+function mapAttributeTypeToTsType(attrType: string, enumValues?: string[]): string {
+    if (enumValues && enumValues.length > 0) {
+        return enumValues.map(value => quoteTypeLiteral(value)).join(' | ');
+    }
+
+    if (attrType === 'INTEGER' || attrType === 'QUANTITY' || attrType === 'DECIMAL') {
+        return 'number';
+    }
+
+    if (attrType === 'BOOLEAN') {
+        return 'boolean';
+    }
+
+    if (attrType === 'DATE') {
+        return 'string | Date';
+    }
+
+    return 'string';
+}
+
+function replaceTsExtension(filePath: string): string {
+    return filePath.replace(/\.ts$/, '.js');
+}
+
+function resolveBaseImport(outputDir: string, baseImport?: string): string {
+    if (baseImport) {
+        return baseImport;
+    }
+
+    const workspaceBaseEntityPath = path.resolve(process.cwd(), 'src', 'models', 'base-entity.ts');
+    const resolvedOutputDir = path.resolve(outputDir);
+    const workspaceSrcPath = path.resolve(process.cwd(), 'src');
+
+    if (!fs.existsSync(workspaceBaseEntityPath)) {
+        return 'rallyorm';
+    }
+
+    const relativeToSrc = path.relative(workspaceSrcPath, resolvedOutputDir);
+    const isInsideWorkspaceSrc =
+        relativeToSrc === '' ||
+        (!relativeToSrc.startsWith('..') && !path.isAbsolute(relativeToSrc));
+
+    if (!isInsideWorkspaceSrc) {
+        return 'rallyorm';
+    }
+
+    const relativeImport = path
+        .relative(resolvedOutputDir, replaceTsExtension(workspaceBaseEntityPath))
+        .replace(/\\/g, '/');
+
+    return relativeImport.startsWith('.') ? relativeImport : `./${relativeImport}`;
+}
+
 export async function generateModels(options: IGeneratorOptions): Promise<void> {
     const { apiKey, workspaceId, outputDir } = options;
+    const frameworkImports = resolveFrameworkImports(outputDir, options.baseImport);
+    const baseImport = frameworkImports.entityImport;
 
     const client = new RallyClient({
         apiKey,
         workspace: workspaceId.startsWith('/workspace/') ? workspaceId : `/workspace/${workspaceId}`,
+        ...(options.baseUrl ? { baseUrl: options.baseUrl } : {}),
         logger: {
             debug: () => {},
             info: (msg) => console.log(`   ${msg}`),
@@ -48,6 +181,17 @@ export async function generateModels(options: IGeneratorOptions): Promise<void> 
 
     let validTypes = types.filter((t: any) => t.ElementName && t.Abstract === false);
 
+    // Deduplicate by ElementName (case-insensitive) to avoid generating same class multiple times.
+    // Rally can return multiple definitions for the same name (global vs workspace-specific overrides).
+    const uniqueTypes = new Map<string, any>();
+    for (const t of validTypes) {
+        const key = ((t as any).ElementName as string).toLowerCase();
+        if (!uniqueTypes.has(key)) {
+            uniqueTypes.set(key, t);
+        }
+    }
+    validTypes = Array.from(uniqueTypes.values());
+
     if (options.include && options.include.length > 0) {
         const includeSet = new Set(options.include.map(n => n.toLowerCase()));
         validTypes = validTypes.filter((t: any) =>
@@ -55,13 +199,13 @@ export async function generateModels(options: IGeneratorOptions): Promise<void> 
         );
     }
 
-    console.log(`Found ${validTypes.length} valid TypeDefinitions. Gathering attributes...`);
+    console.log(`Found ${validTypes.length} unique valid TypeDefinitions. Gathering attributes...`);
 
     if (!fs.existsSync(outputDir)) {
         fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    const classNames: string[] = [];
+    const modelEntries: IGeneratedModelEntry[] = [];
     const seenClassNames = new Set<string>();
 
     for (let i = 0; i < validTypes.length; i++) {
@@ -84,27 +228,45 @@ export async function generateModels(options: IGeneratorOptions): Promise<void> 
         // Fetch AllowedValues in parallel for constrained string/state/rating fields
         const enumMap = await fetchEnumValues(client, attributesResponse);
 
-        const fileName = `${className.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase()}.ts`;
+        const fileStem = toFileStem(className);
+        const fileName = `${fileStem}.ts`;
         const filePath = path.join(outputDir, fileName);
 
-        const classContent = generateClassContent(className, typeDef, attributesResponse, enumMap, options.baseImport);
+        const classContent = generateClassContent(className, typeDef, attributesResponse, enumMap, baseImport);
         fs.writeFileSync(filePath, classContent, 'utf-8');
 
         if (!seenClassNames.has(className)) {
             seenClassNames.add(className);
-            classNames.push(className);
+            modelEntries.push({
+                className,
+                entityType: (typeDef.TypePath ?? typeDef.ElementName).toLowerCase(),
+                fileStem
+            });
         }
     }
 
-    const imports = classNames.map(cn => `import { ${cn} } from './${cn.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase()}.js';`).join('\n');
-    const exportNames = classNames.join(',\n    ');
-    const indexContent =
-        `// Automatically generated by RallyORM CLI\n` +
-        imports + '\n\n' +
-        `export {\n    ${exportNames}\n};\n\n` +
-        `export const GENERATED_MODELS = [\n${classNames.map(cn => `    ${cn}`).join(',\n')}\n];\n`;
+    const modelImports = modelEntries
+        .map(entry => {
+            const importPath = `./${entry.fileStem}.js`;
+            return `import { ${entry.className} } from '${importPath}';`;
+        })
+        .join('\n');
+
+    const generatedDataSourceContent = generateDataSourceContent(modelEntries, frameworkImports);
+
+    const indexContent = modelEntries.length === 0
+        ? `// Automatically generated by RallyORM CLI\n` +
+          `import { RallyEntity } from '${baseImport}';\n\n` +
+          `export const GENERATED_MODELS: (typeof RallyEntity)[] = [];\n`
+        : `// Automatically generated by RallyORM CLI\n` +
+          `import { RallyEntity } from '${baseImport}';\n` +
+          `${modelImports}\n` +
+          `import { GeneratedRallyDataSource } from './generated-data-source.js';\n\n` +
+          `export {\n    ${modelEntries.map(entry => entry.className).join(',\n    ')},\n    GeneratedRallyDataSource\n};\n\n` +
+          `export const GENERATED_MODELS: (typeof RallyEntity)[] = [\n${modelEntries.map(entry => `    ${entry.className}`).join(',\n')}\n];\n`;
 
     fs.writeFileSync(path.join(outputDir, 'index.ts'), indexContent, 'utf-8');
+    fs.writeFileSync(path.join(outputDir, 'generated-data-source.ts'), generatedDataSourceContent, 'utf-8');
 }
 
 /**
@@ -157,6 +319,8 @@ function generateClassContent(
 
     let fieldsStr = '';
     let relationsStr = '';
+    let fieldDeclarationsStr = '';
+    let relationDeclarationsStr = '';
 
     for (const attr of attributes) {
         const attrName = attr.ElementName;
@@ -167,6 +331,7 @@ function generateClassContent(
             const relatedEntity = attr.AllowedValueType?._refObjectName
                 ? attr.AllowedValueType._refObjectName.replace(/[^a-zA-Z0-9_]/g, '')
                 : 'unknown';
+            const relationTsType = attrType === 'COLLECTION' ? 'any[]' : 'any';
 
             let relMeta = `\n        ${attrName}: {\n            type: '${relType}',\n            entity: '${relatedEntity}',\n            isCollection: ${attrType === 'COLLECTION'}`;
             if (attrType === 'OBJECT') {
@@ -177,11 +342,13 @@ function generateClassContent(
             }
             relMeta += `\n        },`;
             relationsStr += relMeta;
+            relationDeclarationsStr += `\n    declare ${formatPropertyName(attrName)}?: ${relationTsType};`;
             continue;
         }
 
         const mappedType = mapAttributeType(attrType);
         const parts: string[] = [`type: ${mappedType}`];
+        const enumValues = enumMap.get(attrName);
 
         if (attr.Required) parts.push('required: true');
         if (attr.ReadOnly) parts.push('readOnly: true');
@@ -194,7 +361,6 @@ function generateClassContent(
         }
 
         // enum values for constrained string/state/rating fields
-        const enumValues = enumMap.get(attrName);
         if (enumValues && enumValues.length > 0) {
             const quoted = enumValues.map(v => `'${v.replace(/'/g, "\\'")}'`).join(', ');
             parts.push(`enum: [${quoted}]`);
@@ -210,6 +376,7 @@ function generateClassContent(
         if (attr.Sortable === false) parts.push('sortable: false');
 
         fieldsStr += `\n        ${attrName}: { ${parts.join(', ')} },`;
+        fieldDeclarationsStr += `\n    declare ${formatPropertyName(attrName)}?: ${mapAttributeTypeToTsType(attrType, enumValues)};`;
     }
 
     return `import { RallyEntity } from '${baseImport}';
@@ -218,6 +385,8 @@ function generateClassContent(
  * Generated model for ${typeDef.Name}
  */
 export class ${className} extends RallyEntity {
+${fieldDeclarationsStr}${relationDeclarationsStr}
+
     static override readonly entityType = '${entityType}';
 
     static override readonly fields = {${fieldsStr}
@@ -227,4 +396,39 @@ export class ${className} extends RallyEntity {
     };
 }
 `;
+}
+
+function generateDataSourceContent(modelEntries: IGeneratedModelEntry[], frameworkImports: IFrameworkImports): string {
+    const generatedModelImports = modelEntries
+        .map(entry => `import { ${entry.className} } from './${entry.fileStem}.js';`)
+        .join('\n');
+
+    const getterOverrides = modelEntries
+        .filter(entry => KNOWN_DATASOURCE_GETTERS.has(entry.entityType))
+        .map(entry => {
+            const getterName = KNOWN_DATASOURCE_GETTERS.get(entry.entityType)!;
+            return `\n    get ${getterName}(): RallyRepository<${entry.className}> {\n        return this.getRepository(${entry.className});\n    }`;
+        })
+        .join('');
+
+    const repositoryMethods = modelEntries
+        .map(entry => `\n    get${entry.className}Repository(): RallyRepository<${entry.className}> {\n        return this.getRepository(${entry.className});\n    }`)
+        .join('');
+
+    const generatedModelsArray = modelEntries.map(entry => `            ${entry.className}`).join(',\n');
+
+    return `// Automatically generated by RallyORM CLI\n` +
+        `import { RallyDataSource, type IRallyDataSourceOptions } from '${frameworkImports.dataSourceImport}';\n` +
+        `import type { RallyRepository } from '${frameworkImports.repositoryImport}';\n` +
+        `${generatedModelImports}\n\n` +
+        `const GENERATED_MODEL_CLASSES = [\n${generatedModelsArray}\n        ];\n\n` +
+        `export class GeneratedRallyDataSource extends RallyDataSource {\n` +
+        `    constructor(options: IRallyDataSourceOptions) {\n` +
+        `        const { models, ...clientOptions } = options;\n` +
+        `        super({\n` +
+        `            ...clientOptions,\n` +
+        `            models: Array.isArray(models) ? [...GENERATED_MODEL_CLASSES, ...models] : GENERATED_MODEL_CLASSES\n` +
+        `        });\n` +
+        `    }${getterOverrides}${repositoryMethods}\n` +
+        `}\n`;
 }

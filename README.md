@@ -11,7 +11,6 @@ The package is ESM-only and targets Node.js applications.
 Requirements:
 
 - Node.js 18 or newer
-- ESM runtime
 
 ```bash
 npm install rallyorm
@@ -235,6 +234,44 @@ story.customFields.c_MyField = 'Hello';
 
 - `rallyorm` exposes the main client, data source, repositories, and models
 - `rallyorm/utils` exposes helper utilities for custom fields
+
+## Model Generator
+
+`npx rallyorm generate` emits TypeScript source files.
+
+Generated TypeScript files use `.js` relative import specifiers so they work directly with Node.js ESM after compilation.
+
+When you use the generated models, RallyORM now supports two complementary modes:
+
+- `RallyDataSource` keeps the built-in getters (`testCases`, `defects`, `userStories`, etc.) and will use generated model overrides at runtime when you pass `models: GENERATED_MODELS`.
+- `GeneratedRallyDataSource` is emitted alongside the generated models and provides typed getters bound to those generated classes, which is the recommended path when you want IDE autocomplete for workspace-specific and custom fields.
+
+Typical usage in a consumer project:
+
+```typescript
+import { GeneratedRallyDataSource } from './src/models/generated/index.js';
+
+const ds = new GeneratedRallyDataSource({
+  apiKey: process.env.RALLY_API_KEY as string,
+  workspace: process.env.RALLY_WORKSPACE
+});
+
+const testCases = await ds.testCases.findAllBy({
+  fetch: ['FormattedID', 'Name']
+});
+```
+
+If you prefer to stay on the base datasource, this also works and still uses generated runtime metadata:
+
+```typescript
+import { RallyDataSource } from 'rallyorm';
+import { GENERATED_MODELS } from './src/models/generated/index.js';
+
+const ds = new RallyDataSource({
+  apiKey: process.env.RALLY_API_KEY as string,
+  models: GENERATED_MODELS
+});
+```
 
 ## Development
 

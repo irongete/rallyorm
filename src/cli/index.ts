@@ -18,7 +18,7 @@ async function main() {
         console.log('Options:');
         console.log('  --api-key=<key>        Rally API Key');
         console.log('  --workspace=<id>       Target Workspace ID');
-        console.log('  --output=<dir>         Output directory (default: ./src/rally-models)');
+        console.log('  --output=<dir>         Output directory (default: ./src/models/generated)');
         process.exit(1);
     }
 
@@ -26,7 +26,8 @@ async function main() {
 
     let apiKey = args.find(arg => arg.startsWith('--api-key='))?.split('=')[1];
     let workspaceId = args.find(arg => arg.startsWith('--workspace='))?.split('=')[1];
-    let outputDir = args.find(arg => arg.startsWith('--output='))?.split('=')[1] || './src/rally-models';
+    const outputDir = args.find(arg => arg.startsWith('--output='))?.split('=')[1] || './src/models/generated';
+    const baseUrl = args.find(arg => arg.startsWith('--base-url='))?.split('=').slice(1).join('=');
     const baseImport = args.find(arg => arg.startsWith('--base-import='))?.split('=').slice(1).join('=');
     const includeArg = args.find(arg => arg.startsWith('--include='))?.split('=').slice(1).join('=');
     const include = includeArg ? includeArg.split(',').map(s => s.trim()).filter(Boolean) : undefined;
@@ -47,7 +48,7 @@ async function main() {
     }
 
     try {
-        await generateModels({ apiKey, workspaceId, outputDir, baseImport, include });
+        await generateModels({ apiKey, workspaceId, outputDir, baseUrl, baseImport, include });
         console.log(`\nSuccessfully generated RallyORM models in ${outputDir}`);
     } catch (err) {
         console.error('\nError generating models:');

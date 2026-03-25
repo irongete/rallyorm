@@ -67,6 +67,16 @@ export class RallyDataSource {
     private _repositoryCache: Map<string, RallyRepository<RallyEntity>>;
     private readonly modelRegistry: Record<string, RallyModelClass>;
 
+    private _getRegisteredModel<TModel extends typeof RallyEntity>(coreModel: TModel): TModel {
+        const entityType = normalizeEntityType(coreModel.entityType) || coreModel.entityType;
+
+        if (typeof entityType !== 'string') {
+            return coreModel;
+        }
+
+        return (this.modelRegistry[entityType] as TModel | undefined) || coreModel;
+    }
+
     /**
      * Create a datasource backed by a new {@link RallyClient} instance.
      *
@@ -117,6 +127,8 @@ export class RallyDataSource {
      * @remarks Passing a raw entity type string falls back to {@link RallyEntity} when
      * no registered model is available.
      */
+    getRepository<TModel extends typeof RallyEntity>(entityTypeOrClass: TModel): RallyRepository<InstanceType<TModel>>;
+    getRepository<T extends RallyEntity = RallyEntity>(entityTypeOrClass: string): RallyRepository<T>;
     getRepository<T extends RallyEntity>(entityTypeOrClass: string | typeof RallyEntity): RallyRepository<T> {
         let entityType: string;
         let ModelClass: typeof RallyEntity;
@@ -183,77 +195,77 @@ export class RallyDataSource {
      * User stories (HierarchicalRequirement) repository
      */
     get userStories(): RallyRepository<UserStory> {
-        return this.getRepository(UserStory);
+        return this.getRepository(this._getRegisteredModel(UserStory));
     }
 
     /**
      * Defects repository
      */
     get defects(): RallyRepository<Defect> {
-        return this.getRepository(Defect);
+        return this.getRepository(this._getRegisteredModel(Defect));
     }
 
     /**
      * Tasks repository
      */
     get tasks(): RallyRepository<Task> {
-        return this.getRepository(Task);
+        return this.getRepository(this._getRegisteredModel(Task));
     }
 
     /**
      * Features (PortfolioItem/Feature) repository
      */
     get features(): RallyRepository<Feature> {
-        return this.getRepository(Feature);
+        return this.getRepository(this._getRegisteredModel(Feature));
     }
 
     /**
      * Iterations repository
      */
     get iterations(): RallyRepository<Iteration> {
-        return this.getRepository(Iteration);
+        return this.getRepository(this._getRegisteredModel(Iteration));
     }
 
     /**
      * Releases repository
      */
     get releases(): RallyRepository<Release> {
-        return this.getRepository(Release);
+        return this.getRepository(this._getRegisteredModel(Release));
     }
 
     /**
      * Milestones repository
      */
     get milestones(): RallyRepository<Milestone> {
-        return this.getRepository(Milestone);
+        return this.getRepository(this._getRegisteredModel(Milestone));
     }
 
     /**
      * Projects repository
      */
     get projects(): RallyRepository<Project> {
-        return this.getRepository(Project);
+        return this.getRepository(this._getRegisteredModel(Project));
     }
 
     /**
      * Users repository
      */
     get users(): RallyRepository<User> {
-        return this.getRepository(User);
+        return this.getRepository(this._getRegisteredModel(User));
     }
 
     /**
      * Tags repository
      */
     get tags(): RallyRepository<Tag> {
-        return this.getRepository(Tag);
+        return this.getRepository(this._getRegisteredModel(Tag));
     }
 
     /**
      * Attachments repository
      */
     get attachments(): RallyRepository<Attachment> {
-        return this.getRepository(Attachment);
+        return this.getRepository(this._getRegisteredModel(Attachment));
     }
 
     // Test Management
@@ -262,35 +274,35 @@ export class RallyDataSource {
      * Test cases repository
      */
     get testCases(): RallyRepository<TestCase> {
-        return this.getRepository(TestCase);
+        return this.getRepository(this._getRegisteredModel(TestCase));
     }
 
     /**
      * Test sets repository
      */
     get testSets(): RallyRepository<TestSet> {
-        return this.getRepository(TestSet);
+        return this.getRepository(this._getRegisteredModel(TestSet));
     }
 
     /**
      * Test case results repository
      */
     get testCaseResults(): RallyRepository<TestCaseResult> {
-        return this.getRepository(TestCaseResult);
+        return this.getRepository(this._getRegisteredModel(TestCaseResult));
     }
 
     /**
      * Test case steps repository
      */
     get testCaseSteps(): RallyRepository<TestCaseStep> {
-        return this.getRepository(TestCaseStep);
+        return this.getRepository(this._getRegisteredModel(TestCaseStep));
     }
 
     /**
      * Test folders repository
      */
     get testFolders(): RallyRepository<TestFolder> {
-        return this.getRepository(TestFolder);
+        return this.getRepository(this._getRegisteredModel(TestFolder));
     }
 
     // Portfolio
@@ -299,14 +311,14 @@ export class RallyDataSource {
      * Initiatives (PortfolioItem/Initiative) repository
      */
     get initiatives(): RallyRepository<Initiative> {
-        return this.getRepository(Initiative);
+        return this.getRepository(this._getRegisteredModel(Initiative));
     }
 
     /**
      * Themes (PortfolioItem/Theme) repository
      */
     get themes(): RallyRepository<Theme> {
-        return this.getRepository(Theme);
+        return this.getRepository(this._getRegisteredModel(Theme));
     }
 
     // Organization
@@ -315,6 +327,6 @@ export class RallyDataSource {
      * Workspaces repository
      */
     get workspaces(): RallyRepository<Workspace> {
-        return this.getRepository(Workspace);
+        return this.getRepository(this._getRegisteredModel(Workspace));
     }
 }

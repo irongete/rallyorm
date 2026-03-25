@@ -845,7 +845,7 @@ export class RallyClient {
                 pagesize: pageSize
             }).then(data => (data?.QueryResult?.Results ?? data?.Results ?? []) as T[]),
             'Collection query',
-            collectionRef
+            collectionRef.split('/').pop()?.split('?')[0] ?? collectionRef
         );
     }
 

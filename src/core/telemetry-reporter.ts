@@ -5,13 +5,7 @@ import { type IRallyProgressEvent } from './rally-client.js';
 const ESC             = '\x1b';
 const HIDE_CURSOR     = `${ESC}[?25l`;
 const SHOW_CURSOR     = `${ESC}[?25h`;
-const SAVE_CURSOR     = `${ESC}7`;           // DEC private – widely supported
-const RESTORE_CURSOR  = `${ESC}8`;
 const ERASE_LINE      = `${ESC}[2K`;
-const RESET_SCROLL    = `${ESC}[r`;
-const cursorTo        = (r: number, c = 1) => `${ESC}[${r};${c}H`;
-const insertLines     = (n: number)         => `${ESC}[${n}L`;
-const scrollRegion    = (t: number, b: number) => `${ESC}[${t};${b}r`;
 
 /**
  * Handles out-of-the-box CLI progress tracking when `telemetry: true` is enabled.
@@ -28,7 +22,8 @@ export class TelemetryReporter {
     private keyOrder:        string[]            = [];
     private activeCount      = 0;
     private running          = false;
-    private headerSize       = 0;
+    private drawnLines       = 0;
+    private logBuffer:       string[]            = [];
     private renderTimer:     NodeJS.Timeout | null = null;
     private completionTimer: NodeJS.Timeout | null = null;
     private resizeHandler:   (() => void)  | null = null;
@@ -45,12 +40,21 @@ export class TelemetryReporter {
 
     // ── Public API ─────────────────────────────────────────────────────────
 
-    /** Write a log line to the scrolling area below the sticky header. */
+    /** Write a log line. Buffered during active progress, flushed when bars complete. */
     log(...args: unknown[]): void {
-        process.stdout.write(format(...args) + '\n');
+        const msg = format(...args);
+        if (this.running) {
+            this.logBuffer.push(msg);
+        } else {
+            process.stdout.write(msg + '\n');
+        }
     }
 
     handleProgress(event: IRallyProgressEvent): void {
+        // Collection events are per-individual-URL (one per entity's collection fetch).
+        // Relationship events already aggregate this into clean hierarchical bars.
+        if (event.operation === 'collection') return;
+
         const key  = `${event.operation}-${event.entityType}-${event.relationshipName ?? ''}`;
         const prev = this.barState.get(key);
 
@@ -72,8 +76,6 @@ export class TelemetryReporter {
 
             if (!this.running) {
                 this.start();
-            } else if (this.isTTY) {
-                this.growHeader(this.keyOrder.length);
             }
             // fall through to update `current` with the value from this first event
         } else if (!this.running) {
@@ -98,16 +100,11 @@ export class TelemetryReporter {
         if (!this.isTTY) return; // piped / headless – skip visual bars
 
         process.stdout.write(HIDE_CURSOR);
-        this.growHeader(this.keyOrder.length);
 
         this.renderTimer = setInterval(() => this.renderBars(), 80);
         this.renderTimer.unref();
 
-        this.resizeHandler = () => {
-            if (!this.running) return;
-            process.stdout.write(scrollRegion(this.headerSize + 1, this.rows));
-            this.renderBars();
-        };
+        this.resizeHandler = () => { if (this.running) this.renderBars(); };
         process.stdout.on('resize', this.resizeHandler);
     }
 
@@ -118,65 +115,43 @@ export class TelemetryReporter {
         this.running = false;
 
         if (this.isTTY) {
-            this.renderBars();                          // final render (shows 100 %)
-            process.stdout.write(RESET_SCROLL);         // restore full-screen scrolling
-            process.stdout.write(cursorTo(this.rows));  // cursor to bottom
+            this.renderBars();   // final render (shows 100 %)
+            process.stdout.write('\n');
             process.stdout.write(SHOW_CURSOR);
         }
 
         this.restoreConsole();
+
+        // Flush all buffered log lines below the completed bars
+        for (const msg of this.logBuffer) {
+            process.stdout.write(msg + '\n');
+        }
+
+        this.logBuffer   = [];
+        this.drawnLines  = 0;
         this.barState.clear();
-        this.keyOrder  = [];
-        this.headerSize = 0;
+        this.keyOrder    = [];
         this.activeCount = 0;
     }
 
     // ── Private: rendering ─────────────────────────────────────────────────
 
-    /**
-     * Reserve `targetSize` rows at the very top of the visible terminal for
-     * the progress bars and push log output into an ANSI scroll region below.
-     *
-     * Uses INSERT_LINES (IL) which pushes existing screen content downward,
-     * creating blank rows at the top without clearing the terminal history.
-     */
-    private growHeader(targetSize: number): void {
-        if (targetSize <= this.headerSize) return;
-        const extra = targetSize - this.headerSize;
-
-        // 1. Temporarily remove any scroll region so IL acts on the whole screen.
-        // 2. Jump to row 1 and insert `extra` blank lines – this pushes all
-        //    visible content down, creating blank rows at the top.
-        // 3. Re-establish the scroll region below the enlarged header.
-        // 4. Park the cursor at the bottom of the scroll region for log output.
-        let out = RESET_SCROLL;
-        out    += cursorTo(1);
-        out    += insertLines(extra);
-        out    += scrollRegion(targetSize + 1, this.rows);
-        out    += cursorTo(this.rows);
-        process.stdout.write(out);
-
-        this.headerSize = targetSize;
-    }
-
     private renderBars(): void {
         if (this.keyOrder.length === 0) return;
 
-        // Save cursor (inside scroll region), jump to header rows, redraw each
-        // bar in-place, then restore cursor so log output continues unaffected.
-        let out = SAVE_CURSOR;
-        for (let i = 0; i < this.keyOrder.length; i++) {
-            const b = this.barState.get(this.keyOrder[i])!;
-            out += cursorTo(i + 1);
-            out += ERASE_LINE;
-            out += this.formatBar(b.title, b.current, b.total);
+        // Move cursor up to overwrite previously drawn bars, then redraw all.
+        let out = this.drawnLines > 0 ? `${ESC}[${this.drawnLines}A` : '';
+        for (const key of this.keyOrder) {
+            const b = this.barState.get(key)!;
+            out += '\r' + ERASE_LINE;
+            out += this.formatBar(b.title, b.current, b.total) + '\n';
         }
-        out += RESTORE_CURSOR;
+        this.drawnLines = this.keyOrder.length;
         process.stdout.write(out);
     }
 
     private formatBar(title: string, current: number, total: number): string {
-        const pct      = total > 0 ? current / total : 0;
+        const pct      = total > 0 ? Math.min(1, current / total) : 0;
         const barWidth = Math.max(8, this.cols - title.length - 22);
         const filled   = Math.round(pct * barWidth);
         const barStr   = `\x1b[36m${'█'.repeat(filled)}${'░'.repeat(barWidth - filled)}\x1b[0m`;

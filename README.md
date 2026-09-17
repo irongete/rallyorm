@@ -7,7 +7,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/rallyorm)](https://www.npmjs.com/package/rallyorm)
 [![Node.js](https://img.shields.io/node/v/rallyorm)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![License](https://img.shields.io/github/license/irongete/rallyorm)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 RallyORM is a TypeScript library for working with the Rally (Broadcom Rally / CA Agile Central) Web Services API using typed models, repositories, and async/await.
 

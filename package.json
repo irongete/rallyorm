@@ -4,7 +4,7 @@
   "description": "ORM for Rally API. Simplifies integration and management of Rally entities in Node.js with modern async/await patterns.",
   "main": "dist/src/index.js",
   "bin": {
-    "rallyorm": "./dist/src/cli/index.js"
+    "rallyorm": "dist/src/cli/index.js"
   },
   "module": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
@@ -62,7 +62,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/irongete/rallyorm.git"
+    "url": "git+https://github.com/irongete/rallyorm.git"
   },
   "bugs": {
     "url": "https://github.com/irongete/rallyorm/issues"

@@ -1,8 +1,8 @@
 # RallyORM
 
 [![CI](https://github.com/irongete/rallyorm/actions/workflows/ci.yml/badge.svg)](https://github.com/irongete/rallyorm/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Firongete%2Frallyorm%2Fbadges%2Ftests.json)](https://github.com/irongete/rallyorm/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Firongete%2Frallyorm%2Fbadges%2Fcoverage.json)](https://github.com/irongete/rallyorm/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Firongete%2Frallyorm%2Frefs%2Fheads%2Fbadges%2Ftests.json)](https://github.com/irongete/rallyorm/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Firongete%2Frallyorm%2Frefs%2Fheads%2Fbadges%2Fcoverage.json)](https://github.com/irongete/rallyorm/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/rallyorm)](https://www.npmjs.com/package/rallyorm)
 [![npm downloads](https://img.shields.io/npm/dm/rallyorm)](https://www.npmjs.com/package/rallyorm)
 [![Node.js](https://img.shields.io/node/v/rallyorm)](https://nodejs.org/)

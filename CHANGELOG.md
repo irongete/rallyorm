@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-09-17
+
+### Fixed
+
+- `where` operators `$eq` / `$ne` with a `null` operand now produce Rally's `(Field = null)` /
+  `(Field != null)`. They were silently dropped, so `{ WorkProduct: { $ne: null } }` queried without
+  any filter and returned the whole entity type. Other operators reject `null` with a
+  `RallyValidationError`; `undefined` operands are still skipped as optional filters.
+- `findOne()` throws `RallyValidationError` when called without an ObjectID or `where` object
+  (`undefined`, `null`, blank string). It previously fell through to an unfiltered query and returned
+  an arbitrary entity of the type — typically after an `ObjectID` that was never selected.
+
 ## [2.0.0] - 2026-09-17
 
 First release published to npm. Versions 1.0.0 and 1.1.0 below only ever existed in the
@@ -119,6 +131,7 @@ repository history.
 
 - Eliminated double serialization of entity data when `save()` is called for new (un-tracked) entities: the internal `_prepareSaveData` was previously invoked twice before the HTTP create request.
 
+[2.0.1]: https://github.com/irongete/rallyorm/releases/tag/v2.0.1
 [2.0.0]: https://github.com/irongete/rallyorm/releases/tag/v2.0.0
 [1.1.0]: https://github.com/irongete/rallyorm/commit/40dc501
 [1.0.0]: https://github.com/irongete/rallyorm/commit/66b505f

@@ -1,6 +1,6 @@
 {
   "name": "rallyorm",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "ORM for Rally API. Simplifies integration and management of Rally entities in Node.js with modern async/await patterns.",
   "main": "dist/src/index.js",
   "bin": {

@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2026-09-17
+
+Found by auditing the query builder, `save()` and the lazy-loading path for inputs that were
+turned into silence instead of the right query or an error.
+
+### Fixed
+
+- **`LazyLink.load()` never worked against Rally.** It passed the whole `_ref` to `findOne()`, which
+  appended it to the entity path (`/project/https://…/project/42`) and got a 404. `findOne()` and
+  `RallyClient.get()` now accept a relative or absolute ref in place of an ObjectID.
+- **`save()` created duplicates for entities loaded without `ObjectID`.** Rally always returns `_ref`
+  but only returns `ObjectID` when selected; `save()` decided create-vs-update on `ObjectID` alone.
+  It now derives the id from `_ref`, and refuses to save an entity whose `_ref` yields no id.
+  `remove()` accepts `_ref`-only entities the same way.
+- **Empty lists silently widened queries to everything.** `{ Field: [] }`, `{ Field: { $in: [] } }` and
+  `$or: []` dropped their condition; they now translate to a predicate that matches nothing
+  (`(ObjectID = 0)`), so `where: { ObjectID: { $in: idsFromAnotherQuery } }` returns no rows when
+  the list is empty. `null` items inside `$in` become `(Field = null)` alternatives instead of being
+  discarded, and a non-array `$in` operand throws `RallyValidationError`.
+- **`Date` values in `where` produced wrong results.** They were serialised with `Date#toString()`
+  (a locale string Rally silently mismatches: `CreationDate > someDate` returned 0 rows) and, as a
+  plain value, were mistaken for a nested filter object and dropped. Dates are now ISO 8601 in every
+  position; an invalid `Date` throws.
+
+### Changed
+
+- README: the *Lazy Relationships* example selected the relationship, which eager-loads it in 2.x;
+  it now shows the case that actually yields a `LazyLink`.
+- The live write suite covers `save()` on an entity loaded without `ObjectID`.
+
 ## [2.0.1] - 2026-09-17
 
 ### Fixed
@@ -131,6 +161,7 @@ repository history.
 
 - Eliminated double serialization of entity data when `save()` is called for new (un-tracked) entities: the internal `_prepareSaveData` was previously invoked twice before the HTTP create request.
 
+[2.0.2]: https://github.com/irongete/rallyorm/releases/tag/v2.0.2
 [2.0.1]: https://github.com/irongete/rallyorm/releases/tag/v2.0.1
 [2.0.0]: https://github.com/irongete/rallyorm/releases/tag/v2.0.0
 [1.1.0]: https://github.com/irongete/rallyorm/commit/40dc501

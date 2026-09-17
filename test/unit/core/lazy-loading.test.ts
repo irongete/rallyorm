@@ -2,6 +2,7 @@ import { expect } from 'chai';
 import { LazyLink } from '../../../src/core/lazy-link.js';
 import { RallyEntity } from '../../../src/models/base-entity.js';
 import { RallyValidationError } from '../../../src/core/errors.js';
+import { RallyDataSource } from '../../../src/core/rally-datasource.js';
 
 describe('Lazy Loading', () => {
 
@@ -201,6 +202,32 @@ describe('Lazy Loading', () => {
                 expect(loggedErrors).to.have.length(1);
                 expect(loggedErrors[0]).to.be.instanceOf(Error);
             }
+        });
+    });
+
+    describe('End to end through a real datasource', () => {
+        it('should GET /<type>/<ObjectID> when loading a LazyLink that carries an absolute ref', async () => {
+            // Regression: load() forwarded the whole ref to findOne(), which appended it to the
+            // entity path and produced `/project/https://…/project/42` (HTTP 404) against Rally.
+            const urls: string[] = [];
+            const fetch = async (url: RequestInfo | URL): Promise<Response> => {
+                const plain = String(url).replace(/\?.*$/, '');
+                urls.push(plain);
+                const body = plain.endsWith('/project/42')
+                    ? { Project: { _ref: 'https://rally1.rallydev.com/slm/webservice/v2.0/project/42', ObjectID: 42, Name: 'Loaded project' } }
+                    : { QueryResult: { Results: [{ _ref: '/hierarchicalrequirement/1', ObjectID: 1, Name: 'Story', Project: { _ref: 'https://rally1.rallydev.com/slm/webservice/v2.0/project/42', _type: 'Project' } }] } };
+                return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+            };
+
+            const ds = new RallyDataSource({ apiKey: 'test-key', logLevel: 'silent', fetch });
+            const [story] = await ds.userStories.find({ select: ['Name'] });
+
+            expect(story.Project).to.be.instanceOf(LazyLink);
+            const project = await story.Project.load();
+
+            expect(urls[urls.length - 1]).to.equal('https://rally1.rallydev.com/slm/webservice/v2.0/project/42');
+            expect(project?.Name).to.equal('Loaded project');
+            expect(project?.ObjectID).to.equal(42);
         });
     });
 });

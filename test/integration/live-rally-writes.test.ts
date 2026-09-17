@@ -46,6 +46,32 @@ describeLiveWrites('Live Rally Write Integration', function () {
         expect(deleted).to.equal(true);
     });
 
+    it('should update through save() an entity loaded without ObjectID instead of creating a duplicate', async () => {
+        const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const name = `RallyORM live save-by-ref ${suffix}`;
+        const created = await defects.create({
+            Name: name,
+            Description: 'Created by the live release gate. Safe to delete.',
+            Project: { _ref: `/project/${config.testProjectOid}` }
+        });
+
+        try {
+            // Only Name selected: Rally still returns _ref, but no ObjectID.
+            const partial = await defects.findOne(created.ObjectID, { select: ['Name'] });
+            expect(partial).to.not.equal(null);
+            expect(partial?.ObjectID).to.equal(undefined);
+
+            partial!.Description = `Updated via save() by ref ${suffix}`;
+            await defects.save(partial);
+
+            const matches = await defects.findAllBy({ where: { Name: name }, select: ['ObjectID', 'Description'] });
+            expect(matches.map(m => String(m.ObjectID))).to.deep.equal([String(created.ObjectID)]);
+            expect(matches[0].Description).to.contain(suffix);
+        } finally {
+            await defects.delete(created.ObjectID).catch(() => {});
+        }
+    });
+
     it('should auto-create a new tag when saving a defect with a string tag', async () => {
         const suffix = Math.random().toString(36).slice(2, 8);
         const tagName = `rallyorm-autotag-${suffix}`;

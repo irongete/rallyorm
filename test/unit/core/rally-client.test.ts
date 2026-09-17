@@ -613,6 +613,27 @@ describe('RallyClient', function () {
             expect(entity.ObjectID).to.equal(456);
         });
 
+        it('should accept a Rally ref in place of an ObjectID in get()', async () => {
+            const urls: string[] = [];
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                fetch: async (url: RequestInfo | URL) => {
+                    urls.push(String(url).replace(/\?.*$/, ''));
+                    return createMockFetch({ '/defect/123': { Defect: { ObjectID: 123, Name: 'Defect' } } })(url);
+                }
+            });
+
+            await client.get('defect', '/defect/123');
+            await client.get('defect', 'https://rally1.rallydev.com/slm/webservice/v2.0/defect/123');
+            await client.get('defect', 123);
+
+            expect(urls).to.deep.equal([
+                'https://rally1.rallydev.com/slm/webservice/v2.0/defect/123',
+                'https://rally1.rallydev.com/slm/webservice/v2.0/defect/123',
+                'https://rally1.rallydev.com/slm/webservice/v2.0/defect/123'
+            ]);
+        });
+
         it('should extract entity from WSAPI get responses using case-insensitive entity keys', () => {
             const client = new RallyClient({
                 apiKey: 'test-key',

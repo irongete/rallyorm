@@ -172,20 +172,18 @@ The built-in models type every field as `any`, so this narrowing only kicks in o
 
 ### Lazy Relationships
 
-If a relationship is present only as a Rally `_ref` and you do not eager-load it, accessing the property returns a `LazyLink`.
+Rally only returns the fields you fetch, and naming a relationship in `select` eager-loads it. A relationship therefore arrives as a bare reference — exposed as a `LazyLink` — when the record is read without a field list (`findOne(id)` returns every field, relationships included, as references) or with `select: ['*']`. Call `load()` to dereference it on demand:
 
 ```typescript
-const story = await ds.userStories.findOne('123456', {
-  select: ['FormattedID', 'Name', 'Project']
-});
+const story = await ds.userStories.findOne('123456');   // every field, relationships as references
 
-const projectLink = story?.Project;
-const project = await projectLink?.load();
+const projectLink = story?.Project;                     // LazyLink { _ref, _refObjectName, … }
+const project = await projectLink?.load();              // one GET, returns the typed Project model
 
 console.log(project?.Name);
 ```
 
-This is useful when you want a lightweight first read and only dereference related entities on demand.
+This is useful when you want a lightweight first read and only dereference some related entities later. When you already know which relationships you need, `select: ['Project.Name']` is cheaper: it batches the loads instead of issuing one request per `load()`.
 
 ### Write Data
 

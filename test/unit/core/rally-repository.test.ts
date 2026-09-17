@@ -127,6 +127,42 @@ describe('RallyRepository', function () {
             expect(query).to.equal('(State = "Open")');
         });
 
+        it('should make an empty $in match nothing instead of dropping the condition', () => {
+            expect(repo._buildQuery({ ObjectID: { $in: [] } })).to.equal('(ObjectID = 0)');
+            expect(repo._buildQuery({ State: [] })).to.equal('(ObjectID = 0)');
+            expect(repo._buildQuery({ State: { $in: [undefined] } })).to.equal('(ObjectID = 0)');
+            expect(repo._buildQuery({ ObjectID: { $in: [] }, State: 'Open' })).to.equal('((ObjectID = 0) AND (State = "Open"))');
+        });
+
+        it('should translate null items inside $in into "is null" alternatives', () => {
+            expect(repo._buildQuery({ Owner: { $in: [null] } })).to.equal('(Owner = null)');
+            expect(repo._buildQuery({ Owner: { $in: [null, 'x'] } })).to.equal('((Owner = null) OR (Owner = "x"))');
+            expect(repo._buildQuery({ Owner: [null, 'x'] })).to.equal('((Owner = null) OR (Owner = "x"))');
+        });
+
+        it('should reject a non-array $in operand', () => {
+            expect(() => repo._buildQuery({ State: { $in: 'Open' } })).to.throw(RallyValidationError, /requires an array/);
+        });
+
+        it('should make an empty $or match nothing', () => {
+            expect(repo._buildQuery({ $or: [] })).to.equal('(ObjectID = 0)');
+            expect(repo._buildQuery({ $or: [], State: 'Open' })).to.equal('((ObjectID = 0) AND (State = "Open"))');
+            // Alternatives that carry no constraint are still ignored (unchanged behaviour).
+            expect(repo._buildQuery({ $or: [{ State: 'Open' }, {}] })).to.equal('((State = "Open"))');
+        });
+
+        it('should serialize Date values as ISO 8601 in every operator position', () => {
+            const date = new Date('2026-01-02T03:04:05.678Z');
+            expect(repo._buildQuery({ CreationDate: { $gt: date } })).to.equal('(CreationDate > "2026-01-02T03:04:05.678Z")');
+            expect(repo._buildQuery({ CreationDate: date })).to.equal('(CreationDate = "2026-01-02T03:04:05.678Z")');
+            expect(repo._buildQuery({ CreationDate: { $ne: date } })).to.equal('(CreationDate != "2026-01-02T03:04:05.678Z")');
+            expect(repo._buildQuery({ CreationDate: [date] })).to.equal('(CreationDate = "2026-01-02T03:04:05.678Z")');
+        });
+
+        it('should reject invalid Date values', () => {
+            expect(() => repo._buildQuery({ CreationDate: { $lt: new Date('nope') } })).to.throw(RallyValidationError, /Invalid Date/);
+        });
+
         it('should drop undefined field values silently', () => {
             const query = repo._buildQuery({ Owner: undefined, Name: 'Test' });
             expect(query).to.not.include('Owner');
@@ -943,6 +979,56 @@ describe('RallyRepository', function () {
             expect(capturedOptions?.query).to.include('Name');
         });
 
+        it('should update, not create, an entity that carries _ref but no ObjectID', async () => {
+            // Typical after `select: ['Name']`: Rally returns _ref but ObjectID was not selected.
+            const calls: string[] = [];
+            const client = createMockClient({
+                create: async () => { calls.push('create'); return { ObjectID: '999' }; },
+                update: async (_type: string, id: string, data: any) => { calls.push(`update:${id}:${JSON.stringify(data)}`); return { ObjectID: id, ...data }; }
+            });
+            const repo = new RallyRepository('defect', client, RallyEntity);
+
+            const loaded = new RallyEntity({ _ref: 'https://rally1.rallydev.com/slm/webservice/v2.0/defect/123', Name: 'Original' });
+            loaded.Name = 'Renamed';
+            await repo.save(loaded);
+
+            expect(calls).to.deep.equal(['update:123:{"Name":"Renamed"}']);
+        });
+
+        it('should refuse to save an entity whose _ref cannot yield an ObjectID', async () => {
+            const repo = new RallyRepository('defect', createMockClient(), RallyEntity);
+
+            try {
+                await repo.save({ _ref: '/defect/not-an-id', Name: 'x' });
+                expect.fail('save() should have thrown');
+            } catch (error: any) {
+                expect(error).to.be.instanceOf(RallyValidationError);
+                expect(error.message).to.include('Cannot determine the ObjectID');
+            }
+        });
+
+        it('should remove an entity identified only by its _ref', async () => {
+            const deleted: string[] = [];
+            const client = createMockClient({ delete: async (_type: string, id: string) => { deleted.push(id); return true; } });
+            const repo = new RallyRepository('defect', client);
+
+            await repo.remove({ _ref: '/defect/456' } as any);
+
+            expect(deleted).to.deep.equal(['456']);
+        });
+
+        it('should resolve a Rally ref passed to findOne into a plain ObjectID', async () => {
+            const gets: string[] = [];
+            const client = createMockClient({ get: async (_type: string, id: string) => { gets.push(id); return { ObjectID: 123, Name: 'Loaded' }; } });
+            const repo = new RallyRepository('defect', client);
+
+            await repo.findOne('/defect/123');
+            await repo.findOne('https://rally1.rallydev.com/slm/webservice/v2.0/defect/123');
+            await repo.findOne('123');
+
+            expect(gets).to.deep.equal(['123', '123', '123']);
+        });
+
         it('should reject findOne without an id instead of returning an arbitrary entity', async () => {
             let queryCalls = 0;
             let getCalls = 0;
@@ -1192,14 +1278,14 @@ describe('RallyRepository', function () {
             expect(result).to.have.length(2);
         });
 
-        it('should return empty string from _buildFieldCondition when $in operand has only null/undefined items', () => {
+        it('should keep null $in items as an is-null match and ignore undefined ones', () => {
             const repo = new RallyRepository('defect', createMockClient()) as any;
-            expect(repo._buildFieldCondition('State', { $in: [null, undefined] })).to.equal('');
+            expect(repo._buildFieldCondition('State', { $in: [null, undefined] })).to.equal('(State = null)');
         });
 
-        it('should return empty string from _buildFieldCondition when array value has only null items', () => {
+        it('should treat a null-only array value as an is-null match', () => {
             const repo = new RallyRepository('defect', createMockClient()) as any;
-            expect(repo._buildFieldCondition('State', [null, undefined])).to.equal('');
+            expect(repo._buildFieldCondition('State', [null, undefined])).to.equal('(State = null)');
         });
     });
 });

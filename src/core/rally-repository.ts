@@ -1,5 +1,5 @@
 import { RelationshipLoader } from './relationship-loader.js';
-import { getEntityTypeFromRef, isRallyRef, normalizeEntityType, toRelativeRef } from './ref-utils.js';
+import { extractObjectIdFromRef, getEntityTypeFromRef, isRallyRef, normalizeEntityType, toRelativeRef } from './ref-utils.js';
 import type { RallyClient, IQueryOptions } from './rally-client.js';
 import type { RallyDataSource } from './rally-datasource.js';
 import { RallyEntity } from '../models/base-entity.js';
@@ -23,6 +23,13 @@ export interface IFindOptions extends Omit<IQueryOptions, 'fetch'> {
 interface IIncludeNode {
     children: Record<string, IIncludeNode>;
 }
+
+/**
+ * Rally's query language has no empty-set literal. This predicate can never match
+ * (no entity has ObjectID 0) and is what `IN ()` / `$or: []` translate to, so an
+ * empty list narrows the query to nothing instead of silently widening it to everything.
+ */
+const NEVER_MATCHES = '(ObjectID = 0)';
 
 interface ITagRef {
     _ref: string;
@@ -256,6 +263,15 @@ export class RallyRepository<T extends RallyEntity = any> {
         }
 
         if (typeof idOrWhere === 'string' || typeof idOrWhere === 'number') {
+            if (typeof idOrWhere === 'string' && isRallyRef(idOrWhere)) {
+                // A ref such as `/defect/123` (what LazyLink.load() passes) must become a plain id;
+                // appended verbatim it produced `/defect//defect/123` and a 404.
+                const refType = normalizeEntityType(getEntityTypeFromRef(idOrWhere));
+                if (refType && refType !== normalizeEntityType(this.entityType)) {
+                    this.client.logger?.warn(`[${this.entityType}] findOne received a ref of type "${refType}"; loading it as ${this.entityType}`);
+                }
+                idOrWhere = this._objectIdFromRef(idOrWhere) ?? idOrWhere;
+            }
             const normalized = this._normalizeOptions(options);
             const { include, ...queryOptions } = normalized;
 
@@ -390,12 +406,16 @@ export class RallyRepository<T extends RallyEntity = any> {
                 ? { ...entity._data }
                 : entity;
 
-        const objectId = raw.ObjectID || raw.id;
+        // Rally always returns `_ref`, but `ObjectID` only when selected: an entity loaded
+        // without it must still be recognised as existing, or save() would create a duplicate.
+        const objectId = raw.ObjectID || raw.id || this._objectIdFromRef(raw._ref);
         if (objectId) {
             return this.update(objectId, entity);
-        } else {
-            return this.create(raw);
         }
+        if (raw._ref) {
+            throw new RallyValidationError(`[${this.entityType}] Cannot determine the ObjectID of ${raw._ref} to update it`);
+        }
+        return this.create(raw);
     }
 
     /**
@@ -428,7 +448,7 @@ export class RallyRepository<T extends RallyEntity = any> {
         if (typeof idOrEntity === 'string' || typeof idOrEntity === 'number') {
             objectId = String(idOrEntity);
         } else if (idOrEntity && typeof idOrEntity === 'object') {
-            objectId = idOrEntity.ObjectID || idOrEntity.id;
+            objectId = idOrEntity.ObjectID || idOrEntity.id || this._objectIdFromRef((idOrEntity as { _ref?: string })._ref) || undefined;
         }
 
         if (!objectId) {
@@ -477,9 +497,14 @@ export class RallyRepository<T extends RallyEntity = any> {
         const conditions: string[] = [];
 
         if (Array.isArray(where.$or)) {
-            const orConditions = where.$or.map((condition: any) => this._buildQuery(condition)).filter(Boolean);
-            if (orConditions.length > 0) {
-                conditions.push(`(${orConditions.join(' OR ')})`);
+            if (where.$or.length === 0) {
+                // An OR with no alternatives is false; dropping it would match everything.
+                conditions.push(NEVER_MATCHES);
+            } else {
+                const orConditions = where.$or.map((condition: any) => this._buildQuery(condition)).filter(Boolean);
+                if (orConditions.length > 0) {
+                    conditions.push(`(${orConditions.join(' OR ')})`);
+                }
             }
         }
 
@@ -521,11 +546,11 @@ export class RallyRepository<T extends RallyEntity = any> {
         }
 
         if (Array.isArray(value)) {
-            const items = value.filter(v => v !== undefined && v !== null);
-            if (items.length === 0) { return ''; }
-            const parts = items.map(v => this._buildEqualityCondition(field, v)).filter(Boolean);
-            if (parts.length === 0) { return ''; }
-            return parts.length === 1 ? parts[0] : `(${parts.join(' OR ')})`;
+            return this._buildInCondition(field, value);
+        }
+
+        if (value instanceof Date) {
+            return this._buildEqualityCondition(field, value);
         }
 
         if (typeof value === 'object' && !this._isOperatorObject(value)) {
@@ -603,17 +628,10 @@ export class RallyRepository<T extends RallyEntity = any> {
                     break;
                 }
                 case '$in':
-                    if (Array.isArray(operatorValue) && operatorValue.length > 0) {
-                        const validItems = operatorValue.filter(v => v !== null && v !== undefined);
-                        if (validItems.length > 0) {
-                            const inConditions = validItems
-                                .map(v => this._buildEqualityCondition(field, v))
-                                .filter(Boolean);
-                            if (inConditions.length > 0) {
-                                conditions.push(`(${inConditions.join(' OR ')})`);
-                            }
-                        }
+                    if (!Array.isArray(operatorValue)) {
+                        throw new RallyValidationError(`Query operator $in on "${field}" requires an array`);
                     }
+                    conditions.push(this._buildInCondition(field, operatorValue));
                     break;
                 default:
                     throw new RallyValidationError(`Unsupported query operator: ${operator}`);
@@ -621,6 +639,25 @@ export class RallyRepository<T extends RallyEntity = any> {
         }
 
         return conditions.length > 1 ? `(${conditions.join(' AND ')})` : conditions[0] || '';
+    }
+
+    /**
+     * Build the OR-list Rally uses for `IN` semantics (array shorthand and `$in`).
+     *
+     * `undefined` items mark values that were never provided and are ignored; `null`
+     * items match unset fields. An effectively empty list never matches.
+     */
+    private _buildInCondition(field: string, values: unknown[]): string {
+        const items = values.filter(v => v !== undefined);
+        if (items.length === 0) {
+            return NEVER_MATCHES;
+        }
+
+        const parts = items
+            .map(v => v === null ? `(${this._escapeField(field)} = null)` : this._buildEqualityCondition(field, v))
+            .filter(Boolean);
+
+        return parts.length === 1 ? parts[0] : `(${parts.join(' OR ')})`;
     }
 
     private _isOperatorObject(obj: any): boolean {
@@ -644,6 +681,13 @@ export class RallyRepository<T extends RallyEntity = any> {
     }
 
     private _escapeValue(value: any): string {
+        if (value instanceof Date) {
+            // Rally only understands ISO 8601; Date#toString() is a locale string it silently mismatches.
+            if (Number.isNaN(value.getTime())) {
+                throw new RallyValidationError('Invalid Date in query filter');
+            }
+            return value.toISOString();
+        }
         if (value && typeof value === 'object') {
             if (typeof value._ref === 'string' && value._ref) {
                 const ref = this._toRelativeRef(value._ref);
@@ -695,6 +739,10 @@ export class RallyRepository<T extends RallyEntity = any> {
             return `(${this._escapeField(field)}.ObjectID = "${this._escapeValue(obj.ObjectID)}")`;
         }
         return '';
+    }
+
+    private _objectIdFromRef(ref: unknown): string | null {
+        return typeof ref === 'string' && ref ? extractObjectIdFromRef(ref) : null;
     }
 
     private _toRelativeRef(ref: string): string {

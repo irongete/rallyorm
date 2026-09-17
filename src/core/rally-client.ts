@@ -33,7 +33,7 @@ export {
 } from './errors.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { toAbsoluteRef, toRelativeRef } from './ref-utils.js';
+import { extractObjectIdFromRef, toAbsoluteRef, toRelativeRef } from './ref-utils.js';
 import { TelemetryReporter } from './telemetry-reporter.js';
 
 /**
@@ -761,10 +761,13 @@ export class RallyClient {
             throw new RallyValidationError('ObjectID is required');
         }
 
-        const result = await this._fetchJson(this._url(`${type}/${objectId}`), {
+        // Accept a Rally ref (`/defect/123` or absolute) in place of a bare id.
+        const id = typeof objectId === 'string' ? (extractObjectIdFromRef(objectId) ?? objectId) : objectId;
+
+        const result = await this._fetchJson(this._url(`${type}/${id}`), {
             method: 'GET',
             params: { fetch },
-            meta: { op: 'get', type, objectId }
+            meta: { op: 'get', type, objectId: id }
         });
 
         return this._extractEntityFromResponse(result, type) as T;

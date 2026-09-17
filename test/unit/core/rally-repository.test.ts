@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import { RallyRepository } from '../../../src/core/rally-repository.js';
 import { LazyLink } from '../../../src/core/lazy-link.js';
+import { RallyValidationError } from '../../../src/core/errors.js';
 import { RallyEntity } from '../../../src/models/base-entity.js';
 import { createMockClient } from '../../setup/test-helpers.js';
 import { mockDefect } from '../../setup/fixtures.js';
@@ -99,6 +100,31 @@ describe('RallyRepository', function () {
         it('should emit null equality condition for null field value', () => {
             const query = repo._buildQuery({ Owner: null });
             expect(query).to.equal('(Owner = null)');
+        });
+
+        it('should translate $ne null into a Rally "is not null" condition', () => {
+            const query = repo._buildQuery({ WorkProduct: { $ne: null } });
+            expect(query).to.equal('(WorkProduct != null)');
+        });
+
+        it('should translate $eq null into a Rally "is null" condition', () => {
+            const query = repo._buildQuery({ Owner: { $eq: null } });
+            expect(query).to.equal('(Owner = null)');
+        });
+
+        it('should keep a null (in)equality operator alongside sibling conditions', () => {
+            const query = repo._buildQuery({ Owner: { $ne: null }, State: 'Open' });
+            expect(query).to.equal('((Owner != null) AND (State = "Open"))');
+        });
+
+        it('should reject null operands for operators other than $eq and $ne', () => {
+            expect(() => repo._buildQuery({ PlanEstimate: { $gt: null } })).to.throw(RallyValidationError, /does not accept null/);
+            expect(() => repo._buildQuery({ Name: { $contains: null } })).to.throw(RallyValidationError);
+        });
+
+        it('should still skip undefined operator operands silently', () => {
+            const query = repo._buildQuery({ PlanEstimate: { $gt: undefined }, State: 'Open' });
+            expect(query).to.equal('(State = "Open")');
         });
 
         it('should drop undefined field values silently', () => {
@@ -915,6 +941,29 @@ describe('RallyRepository', function () {
 
             expect(result).to.not.be.null;
             expect(capturedOptions?.query).to.include('Name');
+        });
+
+        it('should reject findOne without an id instead of returning an arbitrary entity', async () => {
+            let queryCalls = 0;
+            let getCalls = 0;
+            const client = createMockClient({
+                query: async () => { queryCalls += 1; return [{ ObjectID: '1', Name: 'First of type' }]; },
+                get: async () => { getCalls += 1; return { ObjectID: '1' }; }
+            });
+            const repo = new RallyRepository('defect', client) as any;
+
+            for (const missing of [undefined, null, '', '   ', [], 42n]) {
+                try {
+                    await repo.findOne(missing);
+                    expect.fail(`findOne(${String(missing)}) should have thrown`);
+                } catch (error: any) {
+                    expect(error).to.be.instanceOf(RallyValidationError, `findOne(${String(missing)})`);
+                    expect(error.message).to.include('requires an ObjectID or a where object');
+                }
+            }
+
+            expect(queryCalls).to.equal(0);
+            expect(getCalls).to.equal(0);
         });
 
         it('should load relationships when include is provided in find()', async () => {

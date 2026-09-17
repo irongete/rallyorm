@@ -242,9 +242,18 @@ export class RallyRepository<T extends RallyEntity = any> {
      * @param idOrWhere Either a Rally ObjectID or a `where` object.
      * @param options Additional query options used when resolving the entity.
      * @returns The matching entity, or `null` when no record is found.
+     * @throws RallyValidationError When `idOrWhere` is missing, empty or not an ObjectID/`where` object.
      */
     async findOne(idOrWhere: string | number | Record<string, unknown>, options: IFindOptions = {}): Promise<T | null> {
         let entity: T | null;
+
+        // A missing id (typically an ObjectID that was never fetched) must not fall through to
+        // the `where` branch, which would silently return an arbitrary entity of this type.
+        const isId = (typeof idOrWhere === 'string' && idOrWhere.trim() !== '') || typeof idOrWhere === 'number';
+        const isWhere = !!idOrWhere && typeof idOrWhere === 'object' && !Array.isArray(idOrWhere);
+        if (!isId && !isWhere) {
+            throw new RallyValidationError(`[${this.entityType}] findOne requires an ObjectID or a where object, received ${idOrWhere === '' ? 'an empty string' : String(idOrWhere)}`);
+        }
 
         if (typeof idOrWhere === 'string' || typeof idOrWhere === 'number') {
             const normalized = this._normalizeOptions(options);
@@ -549,8 +558,24 @@ export class RallyRepository<T extends RallyEntity = any> {
         const conditions: string[] = [];
 
         for (const [operator, operatorValue] of Object.entries(operators)) {
-            if (operatorValue === undefined || operatorValue === null) {
+            // `undefined` marks an optional filter that was not provided; skip it silently.
+            if (operatorValue === undefined) {
                 continue;
+            }
+
+            // `null` is a real Rally operand for (in)equality — `(Owner != null)` — and
+            // meaningless for every other operator, where dropping it would silently
+            // widen the result set.
+            if (operatorValue === null) {
+                if (operator === '$eq') {
+                    conditions.push(`(${this._escapeField(field)} = null)`);
+                    continue;
+                }
+                if (operator === '$ne') {
+                    conditions.push(`(${this._escapeField(field)} != null)`);
+                    continue;
+                }
+                throw new RallyValidationError(`Query operator ${operator} on "${field}" does not accept null`);
             }
 
             switch (operator) {

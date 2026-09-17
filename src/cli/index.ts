@@ -16,9 +16,12 @@ async function main() {
     if (command !== 'generate' && command !== 'init') {
         console.log('Usage: npx rallyorm generate [options]');
         console.log('Options:');
-        console.log('  --api-key=<key>        Rally API Key');
-        console.log('  --workspace=<id>       Target Workspace ID');
+        console.log('  --api-key=<key>        Rally API Key (prompted when omitted)');
+        console.log('  --workspace=<id>       Target Workspace ID (prompted when omitted)');
         console.log('  --output=<dir>         Output directory (default: ./src/models/generated)');
+        console.log('  --base-url=<url>       WSAPI base URL (default: https://rally1.rallydev.com/slm/webservice/v2.0)');
+        console.log('  --include=<A,B,...>    Only generate these type names (e.g. Defect,HierarchicalRequirement)');
+        console.log('  --base-import=<spec>   Import specifier for the RallyORM base classes (default: rallyorm)');
         process.exit(1);
     }
 

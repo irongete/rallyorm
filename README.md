@@ -1,5 +1,14 @@
 # RallyORM
 
+[![CI](https://github.com/irongete/rallyorm/actions/workflows/ci.yml/badge.svg)](https://github.com/irongete/rallyorm/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Firongete%2Frallyorm%2Fbadges%2Ftests.json)](https://github.com/irongete/rallyorm/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Firongete%2Frallyorm%2Fbadges%2Fcoverage.json)](https://github.com/irongete/rallyorm/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/rallyorm)](https://www.npmjs.com/package/rallyorm)
+[![npm downloads](https://img.shields.io/npm/dm/rallyorm)](https://www.npmjs.com/package/rallyorm)
+[![Node.js](https://img.shields.io/node/v/rallyorm)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![License](https://img.shields.io/github/license/irongete/rallyorm)](LICENSE)
+
 RallyORM is a TypeScript library for working with the Rally (Broadcom Rally / CA Agile Central) Web Services API using typed models, repositories, and async/await.
 
 It gives you a higher-level API over Rally entities such as `UserStory`, `Defect`, `Task`, `Project`, `Iteration`, `Release`, `TestCase`, and more, plus a generator that turns your own workspace's type definitions (custom fields included) into typed models.
@@ -335,6 +344,8 @@ const ds = new RallyDataSource({
 ## Development
 
 - Run tests: `npm test`
+- Run tests with coverage: `npm run coverage` (thresholds in `.c8rc.json`: 88% lines/statements, 85% functions, 80% branches)
+- CI runs the release gate on Node 18, 20 and 22 for every push and pull request. Pushes to `main` also refresh the tests and coverage badges, which are served from the `badges` branch through shields.io — no third-party account involved.
 - Copy `.env.example` to `.env` for local live validation. Keep `.env` untracked and never commit real credentials.
 - Run live integration tests explicitly: `RALLY_INTEGRATION=1 npm run test:live`
 - Run full release validation with live Rally checks: `npm run release:check:live`

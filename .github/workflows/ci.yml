@@ -9,10 +9,14 @@ on:
     - cron: '0 7 * * 1'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         node-version: [18, 20, 22]
     steps:
@@ -30,6 +34,49 @@ jobs:
 
       - name: Release Gate
         run: npm run release:check
+
+      # Coverage thresholds (.c8rc.json) are enforced once per run; the same step
+      # produces the shields.io endpoint JSON consumed by the README badges.
+      - name: Coverage thresholds and badge data
+        if: matrix.node-version == 22
+        run: npm run coverage:badges
+
+      - name: Upload badge data
+        if: matrix.node-version == 22
+        uses: actions/upload-artifact@v4
+        with:
+          name: badges
+          path: coverage/badges
+          retention-days: 1
+
+  # Publishes coverage/tests badge data to the orphan `badges` branch, which the
+  # README references through https://img.shields.io/endpoint. Only the default
+  # GITHUB_TOKEN is involved; the branch is rewritten on every push to main.
+  badges:
+    name: Publish badges
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download badge data
+        uses: actions/download-artifact@v4
+        with:
+          name: badges
+          path: badges
+
+      - name: Push to the badges branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd badges
+          git init -q -b badges
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -q -m "Badge data for ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:badges
 
   live-validation:
     if: github.event_name == 'workflow_dispatch'

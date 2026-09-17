@@ -1,0 +1,11 @@
+{
+    "include": [".test-dist/src/**"],
+    "exclude": [".test-dist/test/**"],
+    "reporter": ["text-summary", "html", "json-summary"],
+    "reports-dir": "coverage",
+    "check-coverage": true,
+    "statements": 88,
+    "lines": 88,
+    "functions": 85,
+    "branches": 80
+}

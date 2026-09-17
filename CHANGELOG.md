@@ -5,6 +5,76 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-09-17
+
+First release published to npm. Versions 1.0.0 and 1.1.0 below only ever existed in the
+repository history.
+
+### Added
+
+- **Model generator CLI** — `npx rallyorm generate` reads the TypeDefinitions of a workspace
+  and emits TypeScript models with typed property declarations (enum values become literal
+  unions), field metadata, relations, a `GENERATED_MODELS` array and a `GeneratedRallyDataSource`
+  with typed getters. Flags: `--api-key`, `--workspace`, `--output`, `--base-url`, `--include`,
+  `--base-import`. Duplicate type names coming from several workspace contexts are deduplicated.
+- **Dynamic model registry** — `RallyDataSource({ models: [...] })` registers extra model classes
+  at runtime. They override the built-in model with the same `entityType`, and the built-in getters
+  (`ds.defects`, `ds.userStories`, …) return the override. `getModelRegistry()` exposes the result.
+- **Unified `select` query option** replacing `fetch` + `include`. Plain names are fetched as
+  scalars or eager-loaded when they name a relation; dot paths (`'Owner.DisplayName'`) fetch the
+  base field and eager-load the nested path; `'*'` maps to `fetch=true`.
+- **Type-filtered eager loading** for polymorphic collections:
+  `'WorkProducts[HierarchicalRequirement].TestCases'` loads the whole collection but only descends
+  into work products of the given type.
+- **Typed `select` results** — `SelectResult<T, S>` and `IFindOptionsWithSelect<S>` (exported from the
+  package root). With a model that declares typed properties and a select list passed `as const`,
+  the selected top-level fields become required in the result type.
+- **Progress telemetry** — `telemetry: true` renders live progress bars for paginated queries and
+  relationship loads as a sticky terminal header, buffering log output underneath; `onProgress`
+  receives the same `IRallyProgressEvent`s programmatically. Polymorphic relation loads report one
+  shared bar plus a sub-bar per source entity type.
+- **Richer field metadata** — `IFieldDefinition` gained `isCustom`, `hidden`, `filterable`,
+  `sortable`, `maxFractionalDigits` and `note`; `IRelationDefinition` gained `readOnly`. The engine
+  uses it: read-only fields are stripped from create/update payloads, `where` clauses on
+  non-filterable fields and `order` on non-sortable fields log a warning, and `validate()` checks
+  `maxFractionalDigits`.
+- **Relationship loader options** `collectionConcurrency` (default `10`) and
+  `inverseQueryChunkSize` (default `50`); large inverse queries are chunked. Scalar leaves in a
+  select list are skipped silently instead of being treated as unknown relations.
+- **New built-in models** `Workspace`, `WorkspaceConfiguration`, `Initiative` and `StrategicTheme`
+  (exported as `Theme`), plus `ds.workspaces`, `ds.workspaceConfigurations`, `ds.initiatives`.
+- `RALLY_MAX_CONCURRENT_REQUESTS` environment variable as the default request-queue concurrency.
+- Release tooling: `release:check` (lint, tests, build, built-package smoke test, `npm pack`
+  dry run), `release:check:live`, and a `prepublishOnly` gate that refuses to publish without a
+  passing live Rally validation. Live integration suites for reads, fixtures and sandbox writes.
+
+### Changed
+
+- **Breaking:** `IFindOptions.fetch` and `IFindOptions.include` were replaced by `select`.
+  Passing the old keys logs a warning and they are ignored.
+- **Breaking:** the built-in models are now generated from Rally metadata and limited to the
+  standard artifact, test, timebox, portfolio and organisation types (`Attachment`, `Defect`,
+  `Feature`, `HierarchicalRequirement`/`UserStory`, `Initiative`, `Iteration`, `Milestone`,
+  `Project`, `Release`, `StrategicTheme`/`Theme`, `Tag`, `Task`, `TestCase`, `TestCaseResult`,
+  `TestCaseStep`, `TestFolder`, `TestSet`, `User`, `Workspace`, `WorkspaceConfiguration`).
+  The hand-written models and datasource getters for every other type (builds, changesets, VSM,
+  capacity planning, apps, analytics, permissions, …) were removed; generate them for your
+  workspace with `npx rallyorm generate` instead.
+- **Breaking:** `UserStory` is an alias of the `HierarchicalRequirement` class and `Theme` an
+  alias of `StrategicTheme`, whose `entityType` is `portfolioitem/strategictheme`
+  (previously `portfolioitem/theme`).
+- Model field validation is opt-in (`entity.validate()` / `getErrors()`); nothing is validated
+  implicitly on `save`.
+
+### Removed
+
+- **Breaking:** the `models: 'generated'` datasource option. It loaded a stub from inside the
+  package that is always empty in a consumer's `node_modules`. Pass the generated `GENERATED_MODELS`
+  array (or use `GeneratedRallyDataSource`) instead.
+- The dot-notation type filter (`'WorkProducts.HierarchicalRequirement.TestCases'`) that existed
+  briefly during development: it treated any segment matching a registered entity type as a filter
+  and broke ordinary paths such as `'Iteration.Project.Name'`. Only the bracket syntax is supported.
+
 ## [1.1.0] - 2025-05-21
 
 ### Added
@@ -49,5 +119,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Eliminated double serialization of entity data when `save()` is called for new (un-tracked) entities: the internal `_prepareSaveData` was previously invoked twice before the HTTP create request.
 
-[1.1.0]: https://github.com/irongete/rallyorm/releases/tag/v1.1.0
-[1.0.0]: https://github.com/irongete/rallyorm/releases/tag/v1.0.0
+[2.0.0]: https://github.com/irongete/rallyorm/releases/tag/v2.0.0
+[1.1.0]: https://github.com/irongete/rallyorm/commit/40dc501
+[1.0.0]: https://github.com/irongete/rallyorm/commit/66b505f

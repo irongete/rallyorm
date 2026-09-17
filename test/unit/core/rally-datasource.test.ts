@@ -121,8 +121,8 @@ describe('RallyDataSource', () => {
         expect(dataSource.getModelRegistry()['project']).to.equal(Project);
     });
 
-    it('should throw when models is "generated" but the generated stub is empty', () => {
-        expect(() => new RallyDataSource({ apiKey: 'test-key', models: 'generated' }))
-            .to.throw('No generated models found. Run `npx rallyorm generate --output=src/models/generated` first.');
+    it('should throw when models is not an array of model classes', () => {
+        expect(() => new RallyDataSource({ apiKey: 'test-key', models: 'generated' as any }))
+            .to.throw('`models` must be an array of model classes');
     });
 });

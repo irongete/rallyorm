@@ -3,7 +3,6 @@ import { RallyRepository } from './rally-repository.js';
 import { RallyEntity } from '../models/base-entity.js';
 import { normalizeEntityType } from './ref-utils.js';
 import { MODEL_REGISTRY, type RallyModelClass } from '../models/registry.js';
-import { GENERATED_MODELS } from '../models/generated/index.js';
 import { RallyValidationError } from './errors.js';
 
 // Core models (generated)
@@ -42,17 +41,14 @@ import { WorkspaceConfiguration } from '../models/core/workspace-configuration.j
  */
 export interface IRallyDataSourceOptions extends IRallyClientConfig {
     /**
-     * Controls which models are registered alongside the built-in core models.
+     * Additional model classes to register alongside the built-in core models,
+     * e.g. the `GENERATED_MODELS` array emitted by `npx rallyorm generate`, a
+     * subset of it, or custom hand-crafted models.
      *
-     * - `'generated'` — loads the models from `src/models/generated/`. Throws if
-     *   the generated file is empty (i.e. the generator has not been run yet).
-     * - `(typeof RallyEntity)[]` — explicit array of model classes, e.g. a subset
-     *   of `GENERATED_MODELS` or custom hand-crafted models.
-     *
-     * Omit this option (or don't pass it) to use only the built-in core models.
+     * Omit this option to use only the built-in core models.
      * User-supplied models take precedence over core models with the same `entityType`.
      */
-    models?: 'generated' | (typeof RallyEntity)[];
+    models?: (typeof RallyEntity)[];
 }
 
 /**
@@ -97,19 +93,11 @@ export class RallyDataSource {
         this.modelRegistry = { ...MODEL_REGISTRY };
 
         if (models) {
-            const modelList: (typeof RallyEntity)[] =
-                models === 'generated'
-                    ? (() => {
-                          if (GENERATED_MODELS.length === 0) {
-                              throw new RallyValidationError(
-                                  'No generated models found. Run `npx rallyorm generate --output=src/models/generated` first.'
-                              );
-                          }
-                          return GENERATED_MODELS;
-                      })()
-                    : models;
+            if (!Array.isArray(models)) {
+                throw new RallyValidationError('RallyDataSource: `models` must be an array of model classes');
+            }
 
-            for (const ModelClass of modelList) {
+            for (const ModelClass of models) {
                 const entityType = (ModelClass as any).entityType;
                 if (typeof entityType === 'string') {
                     this.modelRegistry[normalizeEntityType(entityType) || entityType] =

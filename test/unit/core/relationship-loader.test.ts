@@ -1048,9 +1048,189 @@ describe('RelationshipLoader', () => {
                 undefined
             );
 
-            await loader.loadRelationships(story, ['TypoRelation'], { hierarchicalrequirement: StoryModel });
+            await loader.loadRelationships(story, ['TypoRelation.Name'], { hierarchicalrequirement: StoryModel });
 
+            // TypoRelation.Name warns because 'TypoRelation' is a non-leaf node processed
+            // as a relation. A standalone 'TypoRelation' would be treated silently as a
+            // scalar field hint (indistinguishable from 'Name' etc.) under the smart filter.
             expect(warnings.some(w => w.includes('TypoRelation'))).to.equal(true);
+        });
+    });
+
+    describe('Type-filtered include paths (select syntax)', () => {
+        class StoryModel extends RallyEntity {
+            static entityType = 'hierarchicalrequirement';
+            static relations = {
+                TestCases: { type: 'hasMany', entity: 'testcase', foreignKey: 'TestCases', isCollection: true }
+            };
+        }
+
+        class DefectModel extends RallyEntity {
+            static entityType = 'defect';
+            static relations = {
+                TestCases: { type: 'hasMany', entity: 'testcase', foreignKey: 'TestCases', isCollection: true }
+            };
+        }
+
+        class TestSetModel extends RallyEntity {
+            static entityType = 'testset';
+            static relations = {
+                WorkProducts: { type: 'hasMany', entity: 'artifact', foreignKey: 'WorkProducts', isCollection: true }
+            };
+        }
+
+        const registry = { hierarchicalrequirement: StoryModel, defect: DefectModel, testset: TestSetModel };
+
+        function createPolymorphicClient(collectionCalls: string[]) {
+            return createMockClient({
+                queryCollectionAll: async (ref: string) => {
+                    collectionCalls.push(ref);
+                    if (ref === '/testset/1/WorkProducts') {
+                        return [
+                            { _ref: '/hierarchicalrequirement/10', _type: 'HierarchicalRequirement', Name: 'Story', TestCases: { _ref: '/hierarchicalrequirement/10/TestCases', Count: 1 } },
+                            { _ref: '/defect/20', _type: 'Defect', Name: 'Defect', TestCases: { _ref: '/defect/20/TestCases', Count: 1 } }
+                        ];
+                    }
+                    if (ref === '/hierarchicalrequirement/10/TestCases') {
+                        return [{ _ref: '/testcase/100', _type: 'TestCase', Name: 'TC-100' }];
+                    }
+                    if (ref === '/defect/20/TestCases') {
+                        return [{ _ref: '/testcase/200', _type: 'TestCase', Name: 'TC-200' }];
+                    }
+                    return [];
+                }
+            });
+        }
+
+        function createTestSet() {
+            return new TestSetModel({
+                _ref: '/testset/1',
+                _type: 'TestSet',
+                WorkProducts: { _ref: '/testset/1/WorkProducts', Count: 2 }
+            });
+        }
+
+        it('should parse a bracketed segment into relationName + lower-cased typeFilter', () => {
+            const loader = new RelationshipLoader(createMockClient() as any) as any;
+
+            const paths = loader._parseIncludePaths(['WorkProducts[HierarchicalRequirement].TestCases']);
+            const node = paths['WorkProducts[hierarchicalrequirement]'];
+
+            expect(node).to.not.equal(undefined);
+            expect(node.relationName).to.equal('WorkProducts');
+            expect(node.typeFilter).to.equal('hierarchicalrequirement');
+            expect(node.isLeaf).to.equal(false);
+            expect(node.children.TestCases).to.include({ relationName: 'TestCases', isLeaf: true });
+            expect(node.children.TestCases.typeFilter).to.equal(undefined);
+        });
+
+        it('should keep filtered and unfiltered segments for the same relation as separate tree nodes', () => {
+            const loader = new RelationshipLoader(createMockClient() as any) as any;
+
+            const paths = loader._parseIncludePaths(['WorkProducts.Name', 'WorkProducts[Defect].TestCases']);
+
+            expect(Object.keys(paths)).to.have.members(['WorkProducts', 'WorkProducts[defect]']);
+        });
+
+        it('should mark a node as non-leaf when a longer path passes through it', () => {
+            const loader = new RelationshipLoader(createMockClient() as any) as any;
+
+            const paths = loader._parseIncludePaths(['Owner', 'Owner.Workspace']);
+
+            expect(paths.Owner.isLeaf).to.equal(false);
+            expect(paths.Owner.children.Workspace.isLeaf).to.equal(true);
+        });
+
+        it('should load the full polymorphic collection but only recurse into the filtered type', async () => {
+            const collectionCalls: string[] = [];
+            const loader = new RelationshipLoader(createPolymorphicClient(collectionCalls) as any);
+            const testSet = createTestSet();
+
+            await loader.loadRelationships(testSet, ['WorkProducts[HierarchicalRequirement].TestCases'], registry);
+
+            const [story, defect] = testSet._data.WorkProducts;
+            expect(testSet._data.WorkProducts).to.have.length(2);
+            expect(story.TestCases).to.deep.equal([{ _ref: '/testcase/100', _type: 'TestCase', Name: 'TC-100' }]);
+            expect(defect.TestCases).to.deep.equal({ _ref: '/defect/20/TestCases', Count: 1 });
+            expect(collectionCalls).to.not.include('/defect/20/TestCases');
+        });
+
+        it('should recurse into every work product type when no filter is given', async () => {
+            const collectionCalls: string[] = [];
+            const loader = new RelationshipLoader(createPolymorphicClient(collectionCalls) as any);
+            const testSet = createTestSet();
+
+            await loader.loadRelationships(testSet, ['WorkProducts.TestCases'], registry);
+
+            const [story, defect] = testSet._data.WorkProducts;
+            expect(story.TestCases).to.have.length(1);
+            expect(defect.TestCases).to.have.length(1);
+            expect(collectionCalls).to.include.members(['/hierarchicalrequirement/10/TestCases', '/defect/20/TestCases']);
+        });
+
+        it('should not recurse at all when the filter matches none of the loaded entities', async () => {
+            const collectionCalls: string[] = [];
+            const loader = new RelationshipLoader(createPolymorphicClient(collectionCalls) as any);
+            const testSet = createTestSet();
+
+            await loader.loadRelationships(testSet, ['WorkProducts[Task].TestCases'], registry);
+
+            expect(testSet._data.WorkProducts).to.have.length(2);
+            expect(collectionCalls).to.deep.equal(['/testset/1/WorkProducts']);
+        });
+
+        it('should treat a relation named like an entity type as a relation, never as a type filter', () => {
+            // Regression guard: 'Iteration.Project.Name' must stay a plain relation chain even
+            // though 'project' is a registered entity type — only bracket syntax is a filter.
+            const loader = new RelationshipLoader(createMockClient() as any) as any;
+
+            const paths = loader._parseIncludePaths(['Iteration.Project.Name']);
+
+            expect(paths.Iteration.typeFilter).to.equal(undefined);
+            expect(paths.Iteration.children.Project.relationName).to.equal('Project');
+            expect(paths.Iteration.children.Project.typeFilter).to.equal(undefined);
+            expect(paths.Iteration.children.Project.children.Name.isLeaf).to.equal(true);
+        });
+
+        it('should silently ignore scalar leaves and still eager-load single-segment relation names', async () => {
+            const warnings: string[] = [];
+            const collectionCalls: string[] = [];
+            const client = createPolymorphicClient(collectionCalls);
+            client.logger = { debug() {}, info() {}, warn: (m: string) => warnings.push(m), error() {} };
+            const loader = new RelationshipLoader(client as any);
+            const testSet = createTestSet();
+
+            await loader.loadRelationships(testSet, ['Name', 'ObjectID', 'WorkProducts'], registry);
+
+            expect(warnings).to.deep.equal([]);
+            expect(collectionCalls).to.deep.equal(['/testset/1/WorkProducts']);
+            expect(testSet._data.WorkProducts).to.have.length(2);
+        });
+
+        it('should emit per-source-type progress sub-events only for polymorphic loads', async () => {
+            const events: any[] = [];
+            const client = createPolymorphicClient([]);
+            client.emitProgress = (event: any) => events.push(event);
+            const loader = new RelationshipLoader(client as any);
+            const testSet = createTestSet();
+
+            await loader.loadRelationships(testSet, ['WorkProducts.TestCases'], registry);
+
+            const workProductEvents = events.filter(e => e.relationshipName === 'WorkProducts');
+            const testCaseEvents = events.filter(e => e.relationshipName === 'TestCases');
+
+            // Level 1: a single source type (testset) → no sub-events.
+            expect(workProductEvents.length).to.be.greaterThan(0);
+            expect(workProductEvents.every(e => e.sourceEntityType === undefined)).to.equal(true);
+
+            // Level 2: two source types → one shared bar plus one sub-event per source model.
+            const subEvents = testCaseEvents.filter(e => e.sourceEntityType !== undefined);
+            expect(subEvents.map(e => e.sourceEntityType)).to.have.members(['StoryModel', 'DefectModel']);
+            expect(subEvents.every(e => e.total === 1 && e.current === 1)).to.equal(true);
+
+            const sharedEvents = testCaseEvents.filter(e => e.sourceEntityType === undefined);
+            expect(sharedEvents.map(e => e.total)).to.deep.equal([2, 2]);
+            expect(sharedEvents.map(e => e.current).sort()).to.deep.equal([1, 2]);
         });
     });
 });

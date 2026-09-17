@@ -19,6 +19,8 @@ export class TelemetryReporter {
     private barState = new Map<string, {
         title: string; current: number; total: number; done: boolean;
     }>();
+    /** parentBarKey → ordered list of sub-bar keys (per-source-type breakdowns). */
+    private barHierarchy     = new Map<string, string[]>();
     private keyOrder:        string[]            = [];
     private activeCount      = 0;
     private running          = false;
@@ -56,6 +58,43 @@ export class TelemetryReporter {
         if (event.operation === 'collection') return;
 
         const key  = `${event.operation}-${event.entityType}-${event.relationshipName ?? ''}`;
+
+        if (event.sourceEntityType) {
+            // Sub-bar: per-source-type breakdown of a polymorphic relation load.
+            // Only create the sub-bar once the parent bar exists.
+            if (!this.barState.has(key)) return;
+
+            const subKey = `${key}:${event.sourceEntityType}`;
+            const prev   = this.barState.get(subKey);
+
+            if (!prev) {
+                if (event.total <= 0) return;
+                this.cancelCompletionTimer();
+                this.activeCount++;
+
+                const parentTitle  = this.barState.get(key)!.title;
+                const parentIndent = parentTitle.match(/^(\s*)/)?.[1] ?? '';
+                const subTitle     = `${parentIndent}    \u251C\u2500 ${event.sourceEntityType}`.padEnd(40);
+
+                this.barState.set(subKey, { title: subTitle, current: 0, total: event.total, done: false });
+
+                if (!this.barHierarchy.has(key)) this.barHierarchy.set(key, []);
+                this.barHierarchy.get(key)!.push(subKey);
+            } else if (!this.running) {
+                return;
+            }
+
+            const subEntry  = this.barState.get(subKey)!;
+            const nextDone  = event.current >= event.total;
+            this.barState.set(subKey, { ...subEntry, current: event.current, done: nextDone });
+
+            if (!subEntry.done && nextDone) {
+                this.activeCount = Math.max(0, this.activeCount - 1);
+                if (this.activeCount === 0) this.armCompletionTimer();
+            }
+            return;
+        }
+
         const prev = this.barState.get(key);
 
         if (!prev) {
@@ -130,6 +169,7 @@ export class TelemetryReporter {
         this.logBuffer   = [];
         this.drawnLines  = 0;
         this.barState.clear();
+        this.barHierarchy.clear();
         this.keyOrder    = [];
         this.activeCount = 0;
     }
@@ -141,12 +181,32 @@ export class TelemetryReporter {
 
         // Move cursor up to overwrite previously drawn bars, then redraw all.
         let out = this.drawnLines > 0 ? `${ESC}[${this.drawnLines}A` : '';
+        let lineCount = 0;
+
         for (const key of this.keyOrder) {
             const b = this.barState.get(key)!;
             out += '\r' + ERASE_LINE;
             out += this.formatBar(b.title, b.current, b.total) + '\n';
+            lineCount++;
+
+            // Render any per-source-type sub-bars under this parent
+            const children = this.barHierarchy.get(key);
+            if (children && children.length > 0) {
+                for (let i = 0; i < children.length; i++) {
+                    const childKey = children[i];
+                    const cb = this.barState.get(childKey);
+                    if (!cb) continue;
+                    // Use └─ for the last child, ├─ for all others
+                    const treeChar  = i === children.length - 1 ? '\u2514\u2500' : '\u251C\u2500';
+                    const childTitle = cb.title.replace(/[\u251C\u2514]\u2500/, treeChar);
+                    out += '\r' + ERASE_LINE;
+                    out += this.formatBar(childTitle, cb.current, cb.total) + '\n';
+                    lineCount++;
+                }
+            }
         }
-        this.drawnLines = this.keyOrder.length;
+
+        this.drawnLines = lineCount;
         process.stdout.write(out);
     }
 

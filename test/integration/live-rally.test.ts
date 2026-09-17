@@ -19,7 +19,7 @@ describeLive('Live Rally Integration', function () {
 
     it('should query projects in read-only mode', async () => {
         const projects = await ds.projects.find({
-            fetch: ['ObjectID', 'Name'],
+            select: ['ObjectID', 'Name'],
             order: 'Name',
             pagesize: 3
         });

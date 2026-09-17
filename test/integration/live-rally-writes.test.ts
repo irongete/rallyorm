@@ -35,7 +35,7 @@ describeLiveWrites('Live Rally Write Integration', function () {
         expect(updated.ObjectID).to.equal(created.ObjectID);
 
         const reloaded = await defects.findOne(created.ObjectID, {
-            fetch: ['ObjectID', 'Name', 'Description', 'Project.ObjectID']
+            select: ['ObjectID', 'Name', 'Description', 'Project.ObjectID']
         });
 
         expect(reloaded).to.not.equal(null);
@@ -105,7 +105,7 @@ describeLiveWrites('Live Rally Write Integration', function () {
             createdDefectId = defect.ObjectID;
             expect(createdDefectId).to.not.equal(undefined);
 
-            const reloaded = await defects.findOne(createdDefectId!, { fetch: ['Tags.Name'] });
+            const reloaded = await defects.findOne(createdDefectId!, { select: ['Tags.Name'] });
             const tagNames = ((reloaded?.Tags as any[]) ?? []).map((t: any) => t?.Name ?? t);
             expect(tagNames).to.include(preCreatedTag.Name);
             expect(tagNames).to.include(stringTagName);

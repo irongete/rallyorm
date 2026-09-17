@@ -19,6 +19,8 @@ export interface IRallyProgressEvent {
     level?: number;
     current: number;
     total: number;
+    /** When set, this event describes a per-source-type breakdown of a polymorphic relation load. */
+    sourceEntityType?: string;
 }
 
 export {

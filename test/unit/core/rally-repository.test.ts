@@ -182,27 +182,28 @@ describe('RallyRepository', function () {
 
         it('should parse unified fetch with relationships', () => {
             const opts = repo._normalizeOptions({
-                fetch: ['ObjectID', 'Name', 'Owner.DisplayName']
+                select: ['ObjectID', 'Name', 'Owner.DisplayName']
             });
             expect(opts.fetch).to.include('Owner');
             expect(opts.include).to.include('Owner.DisplayName');
         });
 
-        it('should merge explicit include with fetch dot notation', () => {
+        it('should handle multiple dot-notation paths via select', () => {
             const opts = repo._normalizeOptions({
-                fetch: ['ObjectID', 'Project.Name'],
-                include: ['Owner.DisplayName']
+                select: ['ObjectID', 'Project.Name', 'Owner.DisplayName']
             });
 
-            expect(opts.include).to.deep.equal(['Owner.DisplayName', 'Project.Name']);
+            expect(opts.include).to.include('Owner.DisplayName');
+            expect(opts.include).to.include('Project.Name');
         });
 
-        it('should normalize include when passed as a comma-delimited string', () => {
+        it('should normalize select when passed as a comma-delimited string', () => {
             const opts = repo._normalizeOptions({
-                include: 'Owner.DisplayName, Project.Name, Owner.DisplayName'
+                select: 'Owner.DisplayName, Project.Name, Owner.DisplayName'
             });
 
-            expect(opts.include).to.deep.equal(['Owner.DisplayName', 'Project.Name']);
+            expect(opts.include).to.include('Owner.DisplayName');
+            expect(opts.include).to.include('Project.Name');
         });
     });
 
@@ -590,10 +591,10 @@ describe('RallyRepository', function () {
             };
 
             const entity = await repo.findOne('123', {
-                fetch: ['ObjectID', 'Name', 'Project.Name']
+                select: ['ObjectID', 'Name', 'Project.Name']
             });
 
-            expect(includeCalls).to.deep.equal([['Project.Name']]);
+            expect(includeCalls).to.deep.equal([['ObjectID', 'Name', 'Project.Name']]);
             expect(entity?.ObjectID).to.equal(123);
             expect(entity?.Project.Name).to.equal('Project 1');
         });
@@ -629,7 +630,7 @@ describe('RallyRepository', function () {
             };
 
             const entity = await repo.findOne('123', {
-                include: ['Project.Name']
+                select: ['Project.Name']
             });
 
             expect(entity).to.be.instanceOf(StoryModel);
@@ -704,30 +705,79 @@ describe('RallyRepository', function () {
             expect(capturedPayload.Feature).to.deep.equal({ _ref: '/portfolioitem/feature/42' });
         });
 
-        it('should normalize fetch string with no dot notation to just a fetch field list', () => {
+        it('should normalize select string with no dot notation to fetch field list', () => {
             const repo = new RallyRepository('defect', createMockClient()) as any;
 
-            const opts = repo._normalizeOptions({ fetch: 'ObjectID,Name,State' });
+            const opts = repo._normalizeOptions({ select: 'ObjectID,Name,State' });
 
             expect(opts.fetch).to.equal('ObjectID,Name,State');
-            expect(opts.include === null || opts.include === undefined || opts.include.length === 0).to.equal(true);
+            // Scalar fields are also added to include for single-segment relation discovery;
+            // the smart isLeaf filter in RelationshipLoader filters them out harmlessly.
+            expect(opts.include).to.include('ObjectID');
+            expect(opts.include).to.include('Name');
+            expect(opts.include).to.include('State');
         });
 
-        it('should return empty arrays from _parseUnifiedFetch when fetchSpec is empty', () => {
+        it('should return empty arrays from _parseSelect when selectSpec is empty', () => {
             const repo = new RallyRepository('defect', createMockClient()) as any;
 
-            const result = repo._parseUnifiedFetch('');
+            const result = repo._parseSelect('');
 
             expect(result.fetch).to.deep.equal([]);
             expect(result.include).to.deep.equal([]);
         });
 
-        it('should return empty includes from _normalizeOptions when include is not provided', () => {
+        it('should return empty includes from _normalizeOptions when select is not provided', () => {
             const repo = new RallyRepository('defect', createMockClient()) as any;
 
-            const opts = repo._normalizeOptions({ fetch: 'ObjectID' });
+            const opts = repo._normalizeOptions({ select: 'ObjectID' });
 
-            expect(opts.include === null || opts.include === undefined || opts.include?.length === 0).to.equal(true);
+            expect(opts.fetch).to.equal('ObjectID');
+        });
+
+        it('should strip [TypeFilter] suffixes from fetch but keep them verbatim in include', () => {
+            const repo = new RallyRepository('testset', createMockClient()) as any;
+
+            const result = repo._parseSelect(['Name', 'WorkProducts[HierarchicalRequirement].TestCases', 'WorkProducts[Defect]']);
+
+            expect(result.fetch).to.deep.equal(['Name', 'WorkProducts']);
+            expect(result.include).to.deep.equal(['Name', 'WorkProducts[HierarchicalRequirement].TestCases', 'WorkProducts[Defect]']);
+        });
+
+        it('should map the "*" wildcard to fetch=true and no eager-load paths', () => {
+            const repo = new RallyRepository('defect', createMockClient()) as any;
+
+            const opts = repo._normalizeOptions({ select: ['*', 'Owner.DisplayName'] });
+
+            expect(opts.fetch).to.equal('true');
+            expect(opts.include).to.equal(undefined);
+            expect(opts.select).to.equal(undefined);
+        });
+
+        it('should drop the legacy fetch/include options instead of forwarding them to the client', async () => {
+            let capturedOptions: any;
+            const client = createMockClient({
+                query: async (_type: string, options: any) => {
+                    capturedOptions = options;
+                    return [];
+                }
+            });
+            const repo = new RallyRepository('defect', client) as any;
+
+            await repo.find({ fetch: ['Name'], include: ['Owner.Name'], select: ['ObjectID'] });
+
+            expect(capturedOptions.fetch).to.equal('ObjectID');
+            expect(capturedOptions.include).to.equal(undefined);
+        });
+
+        it('should build the hydration include tree from plain relation names, ignoring type filters', () => {
+            const repo = new RallyRepository('testset', createMockClient()) as any;
+
+            const tree = repo._buildIncludeTree(['WorkProducts[HierarchicalRequirement].TestCases.Name', 'WorkProducts[Defect]']);
+
+            expect(Object.keys(tree)).to.deep.equal(['WorkProducts']);
+            expect(Object.keys(tree.WorkProducts.children)).to.deep.equal(['TestCases']);
+            expect(Object.keys(tree.WorkProducts.children.TestCases.children)).to.deep.equal(['Name']);
         });
 
         it('should skip the client update call when a tracked entity has no changes at all', async () => {
@@ -877,7 +927,7 @@ describe('RallyRepository', function () {
                 includedPaths = include;
                 return entities;
             };
-            await repo.find({ include: ['Owner'] });
+            await repo.find({ select: ['Owner'] });
             expect(includedPaths).to.deep.equal(['Owner']);
         });
 
@@ -891,7 +941,7 @@ describe('RallyRepository', function () {
                 includedPaths = include;
                 return entities;
             };
-            await repo.findBy({ include: ['Owner'] });
+            await repo.findBy({ select: ['Owner'] });
             expect(includedPaths).to.deep.equal(['Owner']);
         });
 

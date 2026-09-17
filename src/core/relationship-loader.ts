@@ -6,6 +6,13 @@ import type { RallyModelClass } from '../models/registry.js';
 interface IIncludeConfig {
     children: Record<string, IIncludeConfig>;
     isLeaf: boolean;
+    /** Actual relation name on the entity (without any [TypeFilter] suffix). */
+    relationName: string;
+    /**
+     * When set (lowercase), only entities of this type participate in sub-relation loading
+     * during the recursion step. The load step itself is unaffected.
+     */
+    typeFilter?: string;
 }
 
 interface IRelationshipEntity {
@@ -60,6 +67,17 @@ export class RelationshipLoader {
         }
     }
 
+    /**
+     * Internal info helper. Only surfaces when the client logger is configured at info level
+     * (e.g. debug:true or logLevel:'info'). Used to report polymorphic-collection load summaries.
+     */
+    private _info(...args: unknown[]): void {
+        const info = this.client?.logger?.info;
+        if (typeof info === 'function') {
+            info(...args);
+        }
+    }
+
     private _asCollectionField(value: unknown): ICollectionField | null {
         if (!value || typeof value !== 'object') {
             return null;
@@ -93,15 +111,18 @@ export class RelationshipLoader {
     }
 
     /**
-     * Parse include paths into structured format
+     * Parse include paths into structured format.
+     *
+     * Each dot-separated segment may carry an optional type filter in square brackets:
+     *   `'WorkProducts[HierarchicalRequirement].TestCases'`
+     * The filter controls which loaded entities participate in nested relation loading
+     * (i.e. only HierarchicalRequirement items from WorkProducts will have TestCases loaded).
      */
     private _parseIncludePaths(includes: string[]): Record<string, IIncludeConfig> {
         const paths: Record<string, IIncludeConfig> = {};
-        // A path of N segments requires loading up to level N-1.
-        // The loader allows levels 0..maxDepth (inclusive), so paths up to
-        // maxDepth+1 segments are fully respected. Anything longer is silently
-        // truncated by the depth guard, so we reject it here with a warning.
         const maxPathDepth = this.maxDepth + 1;
+        // Matches optional [TypeFilter] suffix: 'WorkProducts[HierarchicalRequirement]'
+        const SEGMENT_RE = /^([^[]+?)(?:\[([^\]]+)\])?$/;
 
         for (const include of includes) {
             const parts = include.split('.');
@@ -114,14 +135,25 @@ export class RelationshipLoader {
             let current = paths;
 
             for (let i = 0; i < parts.length; i++) {
-                const part = parts[i];
-                if (!current[part]) {
-                    current[part] = {
+                const part = parts[i].trim();
+                const match = part.match(SEGMENT_RE);
+                const relationName = (match?.[1] ?? part).trim();
+                const typeFilter = match?.[2]?.toLowerCase().trim();
+                const treeKey = typeFilter ? `${relationName}[${typeFilter}]` : relationName;
+                const isCurrentLeaf = i === parts.length - 1;
+
+                if (!current[treeKey]) {
+                    current[treeKey] = {
                         children: {},
-                        isLeaf: i === parts.length - 1
+                        isLeaf: isCurrentLeaf,
+                        relationName,
+                        typeFilter,
                     };
+                } else if (!isCurrentLeaf) {
+                    // A longer path passes through this node — it is no longer a terminal leaf.
+                    current[treeKey].isLeaf = false;
                 }
-                current = current[part].children;
+                current = current[treeKey].children;
             }
         }
 
@@ -129,7 +161,12 @@ export class RelationshipLoader {
     }
 
     /**
-     * Load relationships level by level
+     * Load relationships level by level.
+     *
+     * Leaf nodes are only processed when they correspond to a known relation on at least
+     * one entity type — scalar fields (e.g. 'Name') are silently skipped.
+     * Type-filtered nodes (e.g. 'WorkProducts[HierarchicalRequirement]') load the relation
+     * normally but restrict nested recursion to entities of the specified type.
      */
     private async _loadRelationshipLevels(entities: IRelationshipEntity[], includePaths: Record<string, IIncludeConfig>, modelRegistry: IModelRegistry, level: number = 0): Promise<void> {
         if (level > this.maxDepth) {
@@ -138,16 +175,20 @@ export class RelationshipLoader {
         }
 
         const entitiesByType = this._groupEntitiesByType(entities);
-        const relationEntries = Object.entries(includePaths);
 
-        const loadResults = await Promise.allSettled(relationEntries.map(([relationName, relationConfig]) =>
-            this._loadRelationshipForAllTypes(
-                entitiesByType,
-                relationName,
-                relationConfig,
-                modelRegistry,
-                level
-            )
+        // Leaf nodes are only kept when at least one entity type has them as a registered
+        // relation. This allows `select: ['TestCases']` to eager-load while silently
+        // ignoring scalar-field leaves like 'Name'.
+        const relationEntries = Object.entries(includePaths).filter(([, cfg]) => {
+            if (!cfg.isLeaf) return true;
+            return Object.entries(entitiesByType).some(([entityType]) => {
+                const ModelClass = modelRegistry[entityType];
+                return ModelClass?.relations?.[cfg.relationName] !== undefined;
+            });
+        });
+
+        const loadResults = await Promise.allSettled(relationEntries.map(([, relationConfig]) =>
+            this._loadRelationshipForAllTypes(entitiesByType, relationConfig, modelRegistry, level)
         ));
 
         for (const result of loadResults) {
@@ -156,16 +197,21 @@ export class RelationshipLoader {
             }
         }
 
-        const nestedResults = await Promise.allSettled(relationEntries.map(async ([relationName, relationConfig]) => {
+        const nestedResults = await Promise.allSettled(relationEntries.map(async ([, relationConfig]) => {
             if (Object.keys(relationConfig.children).length > 0) {
-                const relatedEntities = this._extractRelatedEntities(entities, relationName);
-                if (relatedEntities.length > 0) {
-                    await this._loadRelationshipLevels(
-                        relatedEntities,
-                        relationConfig.children,
-                        modelRegistry,
-                        level + 1
-                    );
+                const relatedEntities = this._extractRelatedEntities(entities, relationConfig.relationName);
+                // If a type filter is set, only recurse into entities of that type.
+                // e.g. 'WorkProducts[HierarchicalRequirement].TestCases' →
+                // only load TestCases for UserStory-typed WorkProducts.
+                const filteredEntities = relationConfig.typeFilter
+                    ? relatedEntities.filter(e => {
+                        const type = (e.constructor as { entityType?: string | null })?.entityType?.toLowerCase()
+                            || (e._type as string | undefined)?.toLowerCase();
+                        return type === relationConfig.typeFilter;
+                    })
+                    : relatedEntities;
+                if (filteredEntities.length > 0) {
+                    await this._loadRelationshipLevels(filteredEntities, relationConfig.children, modelRegistry, level + 1);
                 }
             }
         }));
@@ -202,27 +248,55 @@ export class RelationshipLoader {
     }
 
     /**
-     * Load a specific relationship for all entity types
+     * Load a specific relationship across all relevant entity types.
+     *
+     * The relation name and optional type filter come from `relationConfig`.
+     * A shared progress counter keeps all entity-type groups in sync on the same bar.
+     * When there are 2+ eligible entity types, per-type sub-events are emitted so the
+     * telemetry reporter can render a breakdown bar per source type.
      */
-    private async _loadRelationshipForAllTypes(entitiesByType: Record<string, IRelationshipEntity[]>, relationName: string, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry, level: number): Promise<void> {
+    private async _loadRelationshipForAllTypes(entitiesByType: Record<string, IRelationshipEntity[]>, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry, level: number): Promise<void> {
+        const relationName = relationConfig.relationName;
         const entityTypeEntries = Object.entries(entitiesByType);
-        const anyTypeHasRelation = entityTypeEntries.some(([entityType]) => {
+
+        const eligibleEntries = entityTypeEntries.filter(([entityType]) => {
             const ModelClass = modelRegistry[entityType];
             return ModelClass?.relations?.[relationName] !== undefined;
         });
 
-        if (!anyTypeHasRelation && entityTypeEntries.length > 0) {
+        if (eligibleEntries.length === 0 && entityTypeEntries.length > 0) {
             this._warn(`RelationshipLoader: No registered relation "${relationName}" found on any entity type — check include path spelling`);
+            return;
         }
 
-        const results = await Promise.allSettled(entityTypeEntries.map(async ([entityType, entities]) => {
-            const ModelClass = modelRegistry[entityType];
-            if (!ModelClass || !ModelClass.relations || !ModelClass.relations[relationName]) {
-                return;
-            }
+        // Emit an info summary for polymorphic collections (visible at info log level).
+        if (entityTypeEntries.length > 1) {
+            const skippedEntries = entityTypeEntries.filter(([t]) => !eligibleEntries.some(([et]) => et === t));
+            const loadedSummary = eligibleEntries.map(([t, es]) => `${t}×${es.length}`).join(', ');
+            const skippedSummary = skippedEntries.map(([t, es]) => `${t}×${es.length}`).join(', ');
+            this._info(
+                `RelationshipLoader: "${relationName}" loading for ${loadedSummary}` +
+                (skippedSummary ? `. Skipped (no relation): ${skippedSummary}` : '')
+            );
+        }
 
-            const relation = ModelClass.relations[relationName];
-            await this._loadRelationshipBatch(entities, relationName, relation, relationConfig, modelRegistry, level);
+        // Shared progress counter — prevents a fast small group from marking the bar done
+        // while a larger parallel group is still in flight.
+        const sharedProgress = {
+            loaded: 0,
+            total: eligibleEntries.reduce((sum, [, entities]) => sum + entities.length, 0)
+        };
+        // Per-type sub-progress — only created when there are multiple eligible types
+        // so the telemetry reporter can render a breakdown bar for each source type.
+        const multiType = eligibleEntries.length > 1;
+
+        const results = await Promise.allSettled(eligibleEntries.map(async ([entityType, entities]) => {
+            const ModelClass = modelRegistry[entityType]!;
+            const relation = ModelClass.relations![relationName];
+            const entityProgress = multiType
+                ? { loaded: 0, total: entities.length, sourceEntityType: ModelClass.name || entityType }
+                : undefined;
+            await this._loadRelationshipBatch(entities, relationName, relation, relationConfig, modelRegistry, level, sharedProgress, entityProgress);
         }));
 
         for (const result of results) {
@@ -235,11 +309,16 @@ export class RelationshipLoader {
     /**
      * Load relationship for a batch of entities
      */
-    private async _loadRelationshipBatch(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry, level: number): Promise<void> {
+    private async _loadRelationshipBatch(
+        entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition,
+        relationConfig: IIncludeConfig, modelRegistry: IModelRegistry, level: number,
+        sharedProgress?: { loaded: number; total: number },
+        entityProgress?: { loaded: number; total: number; sourceEntityType: string }
+    ): Promise<void> {
         if (relation.type === 'belongsTo') {
             await this._loadBelongsToRelation(entities, relationName, relation, relationConfig, level);
         } else if (relation.type === 'hasMany') {
-            await this._loadHasManyRelation(entities, relationName, relation, relationConfig, modelRegistry, level);
+            await this._loadHasManyRelation(entities, relationName, relation, relationConfig, modelRegistry, level, sharedProgress, entityProgress);
         }
     }
 
@@ -287,19 +366,30 @@ export class RelationshipLoader {
     /**
      * Load hasMany relationships (one-to-many)
      */
-    private async _loadHasManyRelation(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry, level: number): Promise<void> {
+    private async _loadHasManyRelation(
+        entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition,
+        relationConfig: IIncludeConfig, modelRegistry: IModelRegistry, level: number,
+        sharedProgress?: { loaded: number; total: number },
+        entityProgress?: { loaded: number; total: number; sourceEntityType: string }
+    ): Promise<void> {
         if (relation.isCollection) {
-            await this._loadCollectionRelation(entities, relationName, relation, relationConfig, modelRegistry, level);
+            await this._loadCollectionRelation(entities, relationName, relation, relationConfig, modelRegistry, level, sharedProgress, entityProgress);
         } else {
-            await this._loadInverseForeignKeyRelation(entities, relationName, relation, relationConfig, modelRegistry, level);
+            await this._loadInverseForeignKeyRelation(entities, relationName, relation, relationConfig, modelRegistry, level, sharedProgress, entityProgress);
         }
     }
 
     /**
      * Load Rally collection relationships
      */
-    private async _loadCollectionRelation(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry, level: number): Promise<void> {
+    private async _loadCollectionRelation(
+        entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition,
+        relationConfig: IIncludeConfig, modelRegistry: IModelRegistry, level: number,
+        sharedProgress?: { loaded: number; total: number },
+        entityProgress?: { loaded: number; total: number; sourceEntityType: string }
+    ): Promise<void> {
         let loaded = 0;
+        const progressTotal = sharedProgress ? sharedProgress.total : entities.length;
 
         const processEntity = async (entity: IRelationshipEntity) => {
             const collectionField = this._asCollectionField(this._getCollectionField(entity, relationName, relation.foreignKey));
@@ -336,14 +426,27 @@ export class RelationshipLoader {
                     await processEntity(entity);
                 } finally {
                     loaded++;
+                    const progressCurrent = sharedProgress ? ++sharedProgress.loaded : loaded;
                     this.client.emitProgress({
                         operation: 'relationship',
                         entityType: String(relation.entity),
                         relationshipName: relationName,
                         level: level + 1,
-                        current: loaded,
-                        total: entities.length
+                        current: progressCurrent,
+                        total: progressTotal
                     });
+                    if (entityProgress) {
+                        entityProgress.loaded++;
+                        this.client.emitProgress({
+                            operation: 'relationship',
+                            entityType: String(relation.entity),
+                            relationshipName: relationName,
+                            level: level + 1,
+                            current: entityProgress.loaded,
+                            total: entityProgress.total,
+                            sourceEntityType: entityProgress.sourceEntityType
+                        });
+                    }
                 }
             }));
 
@@ -373,16 +476,22 @@ export class RelationshipLoader {
     }
 
     private _buildCollectionFetchFields(relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry): string[] {
+        const scalarLeaves = this._collectScalarLeaves(relationConfig);
+        if (scalarLeaves.includes('true')) {
+            return ['true'];
+        }
+
         const fetchFields = new Set<string>(['ObjectID']);
 
-        for (const leaf of this._collectScalarLeaves(relationConfig)) {
+        for (const leaf of scalarLeaves) {
             fetchFields.add(leaf);
         }
 
         const RelatedModel = modelRegistry?.[String(relation.entity).toLowerCase()];
         if (relationConfig && relationConfig.children && RelatedModel && RelatedModel.relations) {
-            for (const childName of Object.keys(relationConfig.children)) {
-                const childRel = RelatedModel.relations[childName];
+            // Use cfg.relationName (not tree key) to look up the actual relation definition
+            for (const childCfg of Object.values(relationConfig.children)) {
+                const childRel = RelatedModel.relations[childCfg.relationName];
                 if (childRel && childRel.type === 'belongsTo' && childRel.foreignKey) {
                     fetchFields.add(childRel.foreignKey);
                 }
@@ -395,7 +504,12 @@ export class RelationshipLoader {
     /**
      * Load inverse foreign key relationships
      */
-    private async _loadInverseForeignKeyRelation(entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition, relationConfig: IIncludeConfig, modelRegistry: IModelRegistry, level: number): Promise<void> {
+    private async _loadInverseForeignKeyRelation(
+        entities: IRelationshipEntity[], relationName: string, relation: IRelationDefinition,
+        relationConfig: IIncludeConfig, modelRegistry: IModelRegistry, level: number,
+        sharedProgress?: { loaded: number; total: number },
+        entityProgress?: { loaded: number; total: number; sourceEntityType: string }
+    ): Promise<void> {
         const entityRefs = Array.from(new Set(
             entities
                 .map(entity => this._toRelativeRef(entity._ref))
@@ -411,14 +525,17 @@ export class RelationshipLoader {
         const prefetchFields = new Set<string>([relation.foreignKey]);
 
         const scalarLeaves = this._collectScalarLeaves(relationConfig);
-        for (const leaf of scalarLeaves) {
-            prefetchFields.add(leaf);
+        const fetchAll = scalarLeaves.includes('true');
+        if (!fetchAll) {
+            for (const leaf of scalarLeaves) {
+                prefetchFields.add(leaf);
+            }
         }
 
         const RelatedModel = modelRegistry?.[String(relation.entity).toLowerCase()];
         if (relationConfig && relationConfig.children && RelatedModel && RelatedModel.relations) {
-            for (const childName of Object.keys(relationConfig.children)) {
-                const childRel = RelatedModel.relations[childName];
+            for (const childCfg of Object.values(relationConfig.children)) {
+                const childRel = RelatedModel.relations[childCfg.relationName];
                 if (childRel && childRel.type === 'belongsTo' && childRel.foreignKey) {
                     prefetchFields.add(childRel.foreignKey);
                 }
@@ -430,21 +547,35 @@ export class RelationshipLoader {
         const foreignKey = relation.foreignKey;
         
         let loaded = 0;
+        const progressTotal = sharedProgress ? sharedProgress.total : entityRefs.length;
         const chunkResults = await Promise.allSettled(refChunks.map(async refChunk => {
             const result = await this.client.queryAll(relatedEntityType, {
                 query: this._buildInverseQuery(foreignKey, refChunk),
-                fetch: Array.from(prefetchFields).join(','),
+                fetch: fetchAll ? 'true' : Array.from(prefetchFields).join(','),
                 pagesize: 2000
             });
             loaded += refChunk.length;
+            const progressCurrent = sharedProgress ? (sharedProgress.loaded += refChunk.length) : loaded;
             this.client.emitProgress({
                 operation: 'relationship',
                 entityType: String(relation.entity),
                 relationshipName: relationName,
                 level: level + 1,
-                current: loaded,
-                total: entityRefs.length
+                current: progressCurrent,
+                total: progressTotal
             });
+            if (entityProgress) {
+                entityProgress.loaded += refChunk.length;
+                this.client.emitProgress({
+                    operation: 'relationship',
+                    entityType: String(relation.entity),
+                    relationshipName: relationName,
+                    level: level + 1,
+                    current: Math.min(entityProgress.loaded, entityProgress.total),
+                    total: entityProgress.total,
+                    sourceEntityType: entityProgress.sourceEntityType
+                });
+            }
             return result;
         }));
 
@@ -544,7 +675,10 @@ export class RelationshipLoader {
                 .filter(Boolean) as string[]));
 
             if (objectIds.length > 0) {
-                const fetch = Array.from(new Set(['ObjectID', ...extraFetchFields.filter(Boolean)]));
+                const fetchAll = extraFetchFields.includes('true');
+                const fetch = fetchAll
+                    ? ['true']
+                    : Array.from(new Set(['ObjectID', ...extraFetchFields.filter(Boolean)]));
                 const chunks = this._chunkArray(objectIds, this.inverseQueryChunkSize);
 
                 const chunkResults = await Promise.allSettled(chunks.map(chunk => {
@@ -583,18 +717,23 @@ export class RelationshipLoader {
     }
 
     /**
-     * Collect scalar leaf field names from a relationConfig subtree
+     * Collect scalar leaf field names (and relation base names) from a relationConfig subtree.
+     * Uses cfg.relationName so that type-filtered keys like 'TestCases[defect]' are
+     * mapped to their actual field name 'TestCases'.
      */
     private _collectScalarLeaves(relationConfig: IIncludeConfig): string[] {
         if (!relationConfig || !relationConfig.children) { return []; }
 
         const fields = new Set<string>();
-        for (const [child, cfg] of Object.entries(relationConfig.children)) {
+        for (const cfg of Object.values(relationConfig.children)) {
             if (cfg) {
+                if (cfg.isLeaf && cfg.relationName === '*') {
+                    return ['true']; // wildcard: caller should pass fetch=true to Rally
+                }
                 if (cfg.isLeaf) {
-                    fields.add(child);
+                    fields.add(cfg.relationName);
                 } else if (cfg.children && Object.keys(cfg.children).length > 0) {
-                    fields.add(child);
+                    fields.add(cfg.relationName);
                 }
             }
         }

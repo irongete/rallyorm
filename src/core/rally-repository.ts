@@ -9,11 +9,14 @@ import { RallyValidationError, RallyOperationError } from './errors.js';
 /**
  * Repository-level query options.
  *
- * Extends the low-level client query options with relationship eager-loading
- * and object-based where-clause construction helpers.
+ * `select` is the unified field list for both scalar pre-fetching
+ * and relation eager-loading. Dot-notation (`'Owner.Email'`) automatically
+ * adds the base field to the WSAPI fetch and schedules the nested path
+ * for eager loading. Type filter syntax (`'WorkProducts[HierarchicalRequirement].TestCases'`)
+ * restricts nested eager loading to a specific entity sub-type.
  */
-export interface IFindOptions extends IQueryOptions {
-    include?: string | string[];
+export interface IFindOptions extends Omit<IQueryOptions, 'fetch'> {
+    select?: string | string[];
     where?: Record<string, unknown>;
 }
 
@@ -30,6 +33,43 @@ interface IRallyTagData {
     Name?: string;
     ObjectID?: string | number;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 5 – TypeScript inference helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract the top-level field name from a select path.
+ *
+ * Handles all three path forms:
+ *   - `'WorkProducts[HR].TestCases'` → `'WorkProducts'`
+ *   - `'WorkProducts[HR]'`           → `'WorkProducts'`
+ *   - `'Owner.Email'`                → `'Owner'`
+ *   - `'Name'`                       → `'Name'`
+ */
+type TopLevelField<S extends string> =
+    S extends `${infer F}[${string}].${string}` ? F :
+    S extends `${infer F}[${string}]` ? F :
+    S extends `${infer F}.${string}` ? F : S;
+
+/**
+ * Given a model type `T` and a `readonly` select list `S`, returns a type
+ * where the selected top-level fields are required and all others are optional.
+ *
+ * Requires `as const` at the call site so TypeScript infers string literals.
+ *
+ * @example
+ * const r = await repo.findOneBy({ select: ['Name', 'ObjectID'] as const });
+ * r.Name      // string (required)
+ * r.Owner     // SomeType | undefined (optional — not in select)
+ */
+export type SelectResult<T, S extends readonly string[]> =
+    Pick<T, Extract<TopLevelField<S[number]>, keyof T>> &
+    Partial<Omit<T, Extract<TopLevelField<S[number]>, keyof T>>>;
+
+/** Version of `IFindOptions` that binds the select list to a typed tuple. */
+export type IFindOptionsWithSelect<TSelect extends readonly string[]> =
+    Omit<IFindOptions, 'select'> & { select: TSelect };
 
 /**
  * Repository abstraction for a single Rally entity type.
@@ -89,6 +129,8 @@ export class RallyRepository<T extends RallyEntity = any> {
      * @param options Query, fetch, pagination, and relationship include options.
      * @returns Matching entities wrapped in the configured model class.
      */
+    find<S extends readonly string[]>(options: IFindOptionsWithSelect<S>): Promise<Array<SelectResult<T, S>>>;
+    find(options?: IFindOptions): Promise<T[]>;
     async find(options: IFindOptions = {}): Promise<T[]> {
         const normalized = this._normalizeOptions(options);
         const { include, ...queryOptions } = normalized;
@@ -116,6 +158,8 @@ export class RallyRepository<T extends RallyEntity = any> {
      * @param options Repository query options including `where` filters and optional includes.
      * @returns Matching entities wrapped in the configured model class.
      */
+    findBy<S extends readonly string[]>(options: IFindOptionsWithSelect<S> & { where?: Record<string, unknown> }): Promise<Array<SelectResult<T, S>>>;
+    findBy(options?: IFindOptions): Promise<T[]>;
     async findBy(options: IFindOptions = {}): Promise<T[]> {
         const { where = {}, ...otherOptions } = options;
 
@@ -152,6 +196,8 @@ export class RallyRepository<T extends RallyEntity = any> {
      * @param options Repository query options including `where`, ordering, and includes.
      * @returns Every matching entity up to the optional `maxResults` limit.
      */
+    findAllBy<S extends readonly string[]>(options: IFindOptionsWithSelect<S> & { where?: Record<string, unknown> }): Promise<Array<SelectResult<T, S>>>;
+    findAllBy(options?: IFindOptions): Promise<T[]>;
     async findAllBy(options: IFindOptions = {}): Promise<T[]> {
         const { where = {}, ...otherOptions } = options;
 
@@ -227,6 +273,8 @@ export class RallyRepository<T extends RallyEntity = any> {
      * @param options Repository query options with a `where` clause.
      * @returns The first matching entity, or `null` when no record is found.
      */
+    findOneBy<S extends readonly string[]>(options: IFindOptionsWithSelect<S> & { where?: Record<string, unknown> }): Promise<SelectResult<T, S> | null>;
+    findOneBy(options?: IFindOptions): Promise<T | null>;
     async findOneBy(options: IFindOptions = {}): Promise<T | null> {
         const results = await this.findBy({ ...options, pagesize: 1, start: 1 });
         return results[0] ?? null;
@@ -393,7 +441,7 @@ export class RallyRepository<T extends RallyEntity = any> {
      * @returns `true` when at least one matching entity exists.
      */
     async exists(where: Record<string, unknown> = {}): Promise<boolean> {
-        const entity = await this.findOneBy({ where, fetch: 'ObjectID' });
+        const entity = await this.findOneBy({ where, select: 'ObjectID' });
         return entity !== null;
     }
 
@@ -628,15 +676,18 @@ export class RallyRepository<T extends RallyEntity = any> {
         if (normalized.pageSize && !normalized.pagesize) { normalized.pagesize = normalized.pageSize; }
         if (normalized.limit && !normalized.maxResults) { normalized.maxResults = normalized.limit; }
 
-        const explicitInclude = this._normalizeInclude(normalized.include);
-
-        if (normalized.fetch) {
-            const { fetch, include } = this._parseUnifiedFetch(normalized.fetch);
-            normalized.fetch = fetch.length > 0 ? fetch.join(',') : undefined;
-            normalized.include = this._mergeIncludes(explicitInclude, include);
-        } else {
-            normalized.include = explicitInclude;
+        if ('fetch' in normalized || 'include' in normalized) {
+            // Pre-2.0 option names. TypeScript callers get a compile error; JS callers get this hint.
+            this.client.logger?.warn(
+                `[${this.entityType}] The \`fetch\` and \`include\` query options were replaced by \`select\` in RallyORM 2.0 and are ignored. ` +
+                'Pass field and relation paths through `select` instead.'
+            );
         }
+
+        const { fetch, include } = this._parseSelect(normalized.select);
+        normalized.fetch = fetch.length > 0 ? fetch.join(',') : undefined;
+        normalized.include = include;
+        delete normalized.select;
 
         if (typeof normalized.order === 'string') {
             normalized.order = normalized.order.trim();
@@ -648,24 +699,59 @@ export class RallyRepository<T extends RallyEntity = any> {
         return normalized;
     }
 
-    private _normalizeInclude(includeSpec: unknown): string[] {
-        if (!includeSpec) {
-            return [];
+    /**
+     * Parse `select` into the internal `fetch` (WSAPI fields) and `include` (eager-load paths).
+     *
+     * Rules:
+     * - Dot-notation path `'Owner.Email'` → base `'Owner'` goes into `fetch`; full path into `include`.
+     * - Plain name `'Name'` → added to `fetch` and also to `include` so single-segment
+     *   relation names (e.g. `'TestCases'`) can trigger eager loading via the smart isLeaf filter.
+     * - Type-filter suffix `'WorkProducts[HierarchicalRequirement]'` is stripped for `fetch`
+     *   but kept verbatim in `include` for the relationship loader to parse.
+     */
+    private _parseSelect(selectSpec?: string | string[]): { fetch: string[], include: string[] } {
+        if (!selectSpec) {
+            return { fetch: [], include: [] };
         }
 
-        if (Array.isArray(includeSpec)) {
-            return Array.from(new Set(includeSpec.map(item => String(item).trim()).filter(Boolean)));
+        let fieldArray: string[] = [];
+        if (typeof selectSpec === 'string') {
+            fieldArray = selectSpec.split(',').map(f => f.trim()).filter(f => f);
+        } else if (Array.isArray(selectSpec)) {
+            fieldArray = selectSpec.map(f => String(f).trim()).filter(f => f);
+        } else {
+            return { fetch: [], include: [] };
         }
 
-        if (typeof includeSpec === 'string') {
-            return Array.from(new Set(includeSpec.split(',').map(item => item.trim()).filter(Boolean)));
+        const fetch: string[] = [];
+        const include: string[] = [];
+
+        for (const field of fieldArray) {
+            if (field === '*') {
+                // Wildcard: fetch all fields of the top-level entity (fetch=true in WSAPI).
+                return { fetch: ['true'], include: [] };
+            }
+            if (field.includes('.')) {
+                // Dot path: add the type-filter-stripped base to fetch, full path to include.
+                include.push(field);
+                const baseName = field.split('.')[0].replace(/\[[^\]]+\]$/, '');
+                if (!fetch.includes(baseName)) {
+                    fetch.push(baseName);
+                }
+            } else {
+                // Plain field: add stripped name to fetch; add verbatim to include so
+                // single-segment relation names can still trigger eager loading.
+                const baseName = field.replace(/\[[^\]]+\]$/, '');
+                if (!fetch.includes(baseName)) {
+                    fetch.push(baseName);
+                }
+                if (!include.includes(field)) {
+                    include.push(field);
+                }
+            }
         }
 
-        return [];
-    }
-
-    private _mergeIncludes(...includeGroups: string[][]): string[] {
-        return Array.from(new Set(includeGroups.flat().filter(Boolean)));
+        return { fetch, include };
     }
 
     private _hydrateIncludedRelationships(entities: T | T[], includes: string[]): void {
@@ -683,7 +769,8 @@ export class RallyRepository<T extends RallyEntity = any> {
         const includeTree: Record<string, IIncludeNode> = {};
 
         for (const include of includes) {
-            const parts = include.split('.').map(part => part.trim()).filter(Boolean);
+            // Strip any `[TypeFilter]` suffix so the hydration lookup uses only plain relation names.
+            const parts = include.split('.').map(part => part.replace(/\[[^\]]+\]$/, '').trim()).filter(Boolean);
             if (parts.length === 0) {
                 continue;
             }
@@ -755,38 +842,6 @@ export class RallyRepository<T extends RallyEntity = any> {
 
         const HydratedModel = RelatedModel as typeof RallyEntity;
         return new HydratedModel(value, { dataSource: this.dataSource ?? undefined });
-    }
-
-    private _parseUnifiedFetch(fetchSpec: string | string[]): { fetch: string[], include: string[] } {
-        if (!fetchSpec) {
-            return { fetch: [], include: [] };
-        }
-
-        let fieldArray: string[] = [];
-        if (typeof fetchSpec === 'string') {
-            fieldArray = fetchSpec.split(',').map(f => f.trim()).filter(f => f);
-        } else if (Array.isArray(fetchSpec)) {
-            fieldArray = fetchSpec.map(f => String(f).trim()).filter(f => f);
-        } else {
-            return { fetch: [], include: [] };
-        }
-
-        const fetch: string[] = [];
-        const include: string[] = [];
-
-        for (const field of fieldArray) {
-            if (field.includes('.')) {
-                include.push(field);
-                const baseField = field.split('.')[0];
-                if (!fetch.includes(baseField)) {
-                    fetch.push(baseField);
-                }
-            } else {
-                fetch.push(field);
-            }
-        }
-
-        return { fetch, include };
     }
 
     private _stripReadOnlyFields(entity: any): any {

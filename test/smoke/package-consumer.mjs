@@ -94,14 +94,14 @@ const storyRepo = new RallyRepository('hierarchicalrequirement', {
 }, dataSource);
 
 storyRepo.relationshipLoader.loadRelationships = async (entity, include) => {
-    assert.deepEqual(include, ['Project.Name']);
+    // `select` forwards every path to the loader; scalar leaves are filtered out there.
+    assert.deepEqual(include, ['ObjectID', 'Name', 'Project.Name']);
     entity._data.Project = { _ref: '/project/9', _type: 'project', Name: 'Smoke Project' };
     return entity;
 };
 
 const loadedStory = await storyRepo.findOne('321', {
-    fetch: ['ObjectID', 'Name', 'Project'],
-    include: 'Project.Name'
+    select: ['ObjectID', 'Name', 'Project.Name']
 });
 
 assert.equal(loadedStory.Project.Name, 'Smoke Project');

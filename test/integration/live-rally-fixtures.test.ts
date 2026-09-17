@@ -20,7 +20,7 @@ describeLive('Live Rally Fixture-Backed Integration', function () {
 
     (config.testUserStoryOid ? it : it.skip)('should load a configured user story with nested relations', async () => {
         const story = await ds.getRepository(UserStory).findOne(config.testUserStoryOid as string, {
-            fetch: [
+            select: [
                 'ObjectID',
                 'Name',
                 'Project.Name',
@@ -48,7 +48,7 @@ describeLive('Live Rally Fixture-Backed Integration', function () {
 
     (config.testTestCaseOid ? it : it.skip)('should load a configured test case with artifact-compatible relationships', async () => {
         const testCase = await ds.getRepository(TestCase).findOne(config.testTestCaseOid as string, {
-            fetch: [
+            select: [
                 'ObjectID',
                 'Name',
                 'WorkProduct.Name',

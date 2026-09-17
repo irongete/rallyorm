@@ -52,20 +52,28 @@ type TopLevelField<S extends string> =
     S extends `${infer F}[${string}]` ? F :
     S extends `${infer F}.${string}` ? F : S;
 
+/** Keys explicitly declared on `T`, i.e. without the `RallyEntity` index signature. */
+type KnownKeys<T> = keyof {
+    [K in keyof T as string extends K ? never : number extends K ? never : symbol extends K ? never : K]: 0;
+};
+
 /**
- * Given a model type `T` and a `readonly` select list `S`, returns a type
- * where the selected top-level fields are required and all others are optional.
+ * Given a model type `T` and a `readonly` select list `S`, returns `T` with the
+ * selected top-level fields made required. Fields that were not selected keep
+ * their declared (optional) type, and everything else on the model is untouched.
  *
  * Requires `as const` at the call site so TypeScript infers string literals.
+ * Only meaningful for models that declare typed properties (such as the ones
+ * emitted by `npx rallyorm generate`); the built-in core models type every
+ * field as `any` through the `RallyEntity` index signature.
  *
  * @example
- * const r = await repo.findOneBy({ select: ['Name', 'ObjectID'] as const });
- * r.Name      // string (required)
- * r.Owner     // SomeType | undefined (optional — not in select)
+ * const r = await repo.findOneBy({ select: ['Name', 'Owner.DisplayName'] as const });
+ * r.Name         // string            (selected → required)
+ * r.Description  // string | undefined (not selected → stays optional)
  */
 export type SelectResult<T, S extends readonly string[]> =
-    Pick<T, Extract<TopLevelField<S[number]>, keyof T>> &
-    Partial<Omit<T, Extract<TopLevelField<S[number]>, keyof T>>>;
+    T & { [K in Extract<TopLevelField<S[number]>, KnownKeys<T>>]-?: Exclude<T[K], undefined> };
 
 /** Version of `IFindOptions` that binds the select list to a typed tuple. */
 export type IFindOptionsWithSelect<TSelect extends readonly string[]> =

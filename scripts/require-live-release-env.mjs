@@ -1,3 +1,7 @@
+// Honour the project .env exactly like the live test suite does, so `npm publish`
+// can be gated on live validation without exporting credentials in the shell.
+import 'dotenv/config';
+
 const requiredVariables = [
     'RALLY_API_KEY',
     'RALLY_TEST_PROJECT_OID'

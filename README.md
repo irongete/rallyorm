@@ -277,7 +277,7 @@ For full typing of your workspace's custom fields, generate models instead (see 
 
 ## Package Exports
 
-- `rallyorm` exposes the main client, data source, repositories, models, error classes and types (`IFindOptions`, `SelectResult`, …)
+- `rallyorm` exposes the main client, data source, repositories, models, `LazyLink`, the error classes and the public types (`IRallyClientConfig`, `IFindOptions`, `SelectResult`, `IRallyProgressEvent`, …)
 - `rallyorm/utils` exposes helper utilities for custom fields
 
 ## Model Generator

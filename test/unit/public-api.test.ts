@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import {
     Iteration,
+    LazyLink,
     Rally,
     RallyClient,
     RallyDataSource,
@@ -21,6 +22,7 @@ import {
     Defect,
     Task
 } from '../../src/index.js';
+import type { IFindOptions, IRallyProgressEvent, IRelationshipLoaderOptions, SelectResult } from '../../src/index.js';
 
 describe('Public API', () => {
     it('should expose the documented root exports', () => {
@@ -38,6 +40,14 @@ describe('Public API', () => {
         expect(Defect.entityType).to.equal('defect');
         expect(Task.entityType).to.equal('task');
         expect(Project.entityType).to.equal('project');
+        expect(LazyLink).to.be.a('function');
+
+        // Type-only exports consumers need to annotate their own code.
+        const progress: IRallyProgressEvent = { operation: 'query', current: 1, total: 2 };
+        const loaderOptions: IRelationshipLoaderOptions = { maxDepth: 2 };
+        const findOptions: IFindOptions = { select: ['Name'] };
+        const narrowed: SelectResult<Defect, readonly ['Name']> | null = null;
+        expect([progress, loaderOptions, findOptions, narrowed]).to.have.length(4);
     });
 
     it('should expose the error class hierarchy', () => {

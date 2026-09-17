@@ -25,8 +25,11 @@ export type {
 	ICollectionQueryOptions,
 	IWritePermissions,
 	IRallyLogger,
-	IQueueOptions
+	IQueueOptions,
+	IRelationshipLoaderOptions,
+	IRallyProgressEvent
 } from './core/rally-client.js';
+export { LazyLink } from './core/lazy-link.js';
 export { RallyDataSource } from './core/rally-datasource.js';
 export type { IRallyDataSourceOptions } from './core/rally-datasource.js';
 export { RallyRepository } from './core/rally-repository.js';

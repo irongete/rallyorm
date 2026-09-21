@@ -339,46 +339,9 @@ const ds = new RallyDataSource({
 - `models: 'generated'` was removed from `RallyDataSource`; pass the `GENERATED_MODELS` array instead.
 - The set of built-in models is now generated from Rally type definitions and covers the standard artifact, test, timebox, portfolio and organisation types. Anything else (builds, changesets, capacity planning, …) is available through `npx rallyorm generate`.
 
-## Development
+## Contributing
 
-- Run tests: `npm test`
-- Run tests with coverage: `npm run coverage` (thresholds in `.c8rc.json`: 88% lines/statements, 85% functions, 80% branches)
-- CI runs the release gate on Node 18, 20 and 22 for every push and pull request. Pushes to `main` also refresh the tests and coverage badges, which are served from the `badges` branch through shields.io — no third-party account involved.
-- Copy `.env.example` to `.env` for local live validation. Keep `.env` untracked and never commit real credentials.
-- Run live integration tests explicitly: `RALLY_INTEGRATION=1 npm run test:live`
-- Run full release validation with live Rally checks: `npm run release:check:live`
-- Publish: `npm publish` (runs `prepublishOnly`, requires live Rally credentials, and blocks unless `release:check:publish` passes)
-
-### Live Validation Environment
-
-The normal release gate does not require real Rally credentials.
-
-Publishing does require live validation against a real Rally environment.
-
-Variables used by the live suite:
-
-- `RALLY_INTEGRATION`: required to opt in to live tests. Use `1` or `true`.
-- `RALLY_API_KEY`: required for any live integration run.
-- `RALLY_WORKSPACE`: optional workspace ObjectID.
-- `RALLY_BASE_URL`: optional WSAPI base URL.
-- `RALLY_LOG_LEVEL`: optional client log level for live runs.
-- `RALLY_MAX_CONCURRENT_REQUESTS`: optional global concurrency limit for Rally API requests. Default is `10`.
-- `RALLY_TEST_PROJECT_OID`: required for live write validation.
-- `RALLY_TEST_USERSTORY_OID`: optional fixture ObjectID for targeted scenarios.
-- `RALLY_TEST_TESTCASE_OID`: optional fixture ObjectID for targeted scenarios.
-
-Typical local flow:
-
-```bash
-npm test
-npm run release:check
-npm run release:check:live
-npm publish
-```
-
-`release:check:live` already enables `RALLY_INTEGRATION=1` internally. You still need the corresponding environment variables to be present.
-
-`npm publish` runs `release:check:publish`, which fails fast unless `RALLY_API_KEY` and `RALLY_TEST_PROJECT_OID` are present and the live suite passes.
+Bug reports and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development, testing and release workflow.
 
 ## License
 

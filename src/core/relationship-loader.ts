@@ -1,4 +1,5 @@
 import { toRelativeRef, toAbsoluteRef } from './ref-utils.js';
+import { joinConditions } from './query-utils.js';
 import type { RallyClient, IRelationshipLoaderOptions } from './rally-client.js';
 import type { IRallyEntityData, IRelationDefinition } from '../models/base-entity.js';
 import type { RallyModelClass } from '../models/registry.js';
@@ -330,6 +331,10 @@ export class RelationshipLoader {
         const entityRefMap = new Map<string, IRelationshipEntity[]>();
 
         for (const entity of entities) {
+            if (relation.foreignKey === relationName && this._isFilledInPlace(this._rawValue(entity, relationName), relationConfig)) {
+                continue;
+            }
+
             const foreignKeyValue = this._extractForeignKeyValue(entity, relation.foreignKey);
             if (foreignKeyValue) {
                 foreignKeys.add(foreignKeyValue);
@@ -635,12 +640,7 @@ export class RelationshipLoader {
      * Build query for inverse relationship
      */
     private _buildInverseQuery(foreignKey: string, entityRefs: string[]): string {
-        if (entityRefs.length === 1) {
-            return `(${foreignKey} = "${this._toRelativeRef(entityRefs[0])}")`;
-        }
-
-        const conditions = entityRefs.map(ref => `(${foreignKey} = "${this._toRelativeRef(ref)}")`);
-        return `(${conditions.join(' OR ')})`;
+        return joinConditions(entityRefs.map(ref => `(${foreignKey} = "${this._toRelativeRef(ref)}")`), 'OR');
     }
 
     private _chunkArray<T>(items: T[], chunkSize: number): T[][] {
@@ -734,10 +734,51 @@ export class RelationshipLoader {
                     fields.add(cfg.relationName);
                 } else if (cfg.children && Object.keys(cfg.children).length > 0) {
                     fields.add(cfg.relationName);
+                    // Rally fills related objects in place, at any depth, with fields named in
+                    // the request's fetch, so naming every descendant here lets the next levels
+                    // skip objects that arrive complete (see _isFilledInPlace).
+                    this._addDescendantNames(cfg, fields);
                 }
             }
         }
+        if (fields.size > 0) {
+            // Related objects filled in place need their ObjectID to count as complete.
+            fields.add('ObjectID');
+        }
         return Array.from(fields);
+    }
+
+    private _addDescendantNames(relationConfig: IIncludeConfig, fields: Set<string>): void {
+        for (const child of Object.values(relationConfig.children)) {
+            if (child.relationName !== '*') {
+                fields.add(child.relationName);
+                this._addDescendantNames(child, fields);
+            }
+        }
+    }
+
+    /**
+     * Whether a related object already carries everything requested below it, so reading it
+     * again would add nothing. Rally returns a related object filled in place with any field
+     * named in the parent request's fetch; the repository and _collectScalarLeaves ask for them.
+     * Anything short of that (a misspelt field, a wildcard) falls back to a normal load.
+     */
+    private _isFilledInPlace(value: unknown, relationConfig: IIncludeConfig): boolean {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            return false;
+        }
+
+        const data = ((value as IRelationshipEntity)._data ?? value) as Record<string, unknown>;
+        if (typeof data._ref !== 'string' || !('ObjectID' in data)) {
+            return false;
+        }
+
+        return Object.values(relationConfig.children)
+            .every(child => child.relationName !== '*' && child.relationName in data);
+    }
+
+    private _rawValue(entity: IRelationshipEntity, field: string): unknown {
+        return entity._data ? entity._data[field] : entity[field];
     }
 
     /**
@@ -754,12 +795,7 @@ export class RelationshipLoader {
      * Build query for multiple ObjectIDs
      */
     private _buildObjectIdQuery(objectIds: string[]): string {
-        if (objectIds.length === 1) {
-            return `(ObjectID = ${objectIds[0]})`;
-        }
-
-        const conditions = objectIds.map(id => `(ObjectID = ${id})`);
-        return `(${conditions.join(' OR ')})`;
+        return joinConditions(objectIds.map(id => `(ObjectID = ${id})`), 'OR');
     }
 
     private _toAbsoluteRef(rel: string | null | undefined): string | null | undefined {
@@ -822,14 +858,12 @@ export class RelationshipLoader {
                 return String(n);
             })
             .filter(n => typeof n === 'string' && n.length > 0);
-        const query = names
-            .map(name => `(Name = "${name.replace(/"/g, '\\"')}")`)
-            .join(' OR ');
+        const query = joinConditions(names.map(name => `(Name = "${name.replace(/"/g, '\\"')}")`), 'OR');
 
         if (!query) { return []; }
 
         return this.client.query('tag', {
-            query: `(${query})`,
+            query,
             fetch: 'ObjectID,Name',
             pagesize: 1000
         });

@@ -94,5 +94,16 @@ export default [
       'no-empty': 'off', // Allow empty blocks in tests
       'no-constant-binary-expression': 'off'
     }
+  },
+
+  // CommonJS files (e.g. the CommonJS consumer smoke test) load modules with require()
+  {
+    files: ['**/*.cjs'],
+    languageOptions: {
+      sourceType: 'commonjs'
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off'
+    }
   }
 ];

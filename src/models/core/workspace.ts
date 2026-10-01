@@ -4,6 +4,27 @@ import { RallyEntity } from '../base-entity.js';
  * Generated model for Workspace
  */
 export class Workspace extends RallyEntity {
+
+    declare ObjectUUID?: string;
+    declare SchemaVersion?: string | null;
+    declare Style?: string;
+    declare State?: "Open" | "Closed" | (string & {});
+    declare Notes?: string;
+    declare Description?: string;
+    declare Name?: string;
+    declare VersionId?: string | null;
+    declare CreationDate?: string | Date;
+    declare ObjectID?: number;
+    declare Tags?: any[];
+    declare WorkRules?: any[];
+    declare Children?: any[];
+    declare Subscription?: any;
+    declare Owner?: any;
+    declare TypeDefinitions?: any[];
+    declare WorkspaceConfiguration?: any;
+    declare RevisionHistory?: any;
+    declare Projects?: any[];
+
     static override readonly entityType = 'workspace';
 
     static override readonly fields = {

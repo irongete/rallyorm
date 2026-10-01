@@ -5,6 +5,80 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **The built-in models declare their fields with real types.** They used to type every field as
+  `any`. Each standard field now has the type Rally returns: `Name?: string`,
+  `PlanEstimate?: number | null`, `CreationDate?: string | Date`. Dropdowns list Rally's values but
+  accept any string (`'Defined' | … | (string & {})`), so workspace-specific values keep compiling.
+  Relations stay `any` (a loaded model or a `LazyLink` at runtime), and custom fields keep working
+  through the index signature.
+- **`select` narrows the result type without `as const`.** The finders take the select list as a
+  `const` type parameter, so the selected fields of an inline list are required in the result type.
+- `create()` returns `Persisted<T>`, whose `ObjectID` is always a number, so code such as
+  `repo.delete(created.ObjectID)` type-checks. `delete()` and `findOne()` accept an undefined id in
+  their types, like `update()` already did, and still throw `RallyValidationError` at runtime.
+- Generator options: `--open-enums` (dropdowns typed as their values plus any string) and
+  `--exclude-custom-fields` (leave out `c_*` fields). The shipped models are generated with both.
+
+### Fixed
+
+- **Queries with three or more AND/OR terms silently returned nothing.** Rally's query grammar is
+  strictly binary — `((A) OR (B) OR (C))` and `((A))` are parse errors — but every query builder
+  joined terms flat. Affected: `where` with 3+ fields, `$in`/array values with 3+ items, `$or`/`$and`
+  with 3+ branches, operator objects with 3+ operators, dotted `select` paths such as
+  `Owner.DisplayName` when the results point at 3+ distinct related objects (the relation stayed
+  unloaded), inverse relationship loads, and tag lookups by name (a write with 3+ string tags could
+  create duplicate tags). Terms are now nested pairwise: `(((A) OR (B)) OR (C))`.
+- **Rally query errors are no longer reported as "0 results".** Rally answers a query it cannot parse
+  with HTTP 200 and the reason in `QueryResult.Errors`; the client now throws `RallyOperationError`
+  (with `rallyErrors`) instead of returning an empty page. Such errors are not retried.
+- **`find()` and `findBy()` ignored `maxResults`.** They always read a single page (200 records by
+  default), so `maxResults: 4000` returned 200, and `maxResults: 10` could return up to 200. With
+  `maxResults` they now page until they have that many results, using pages of up to 2000 unless
+  `pagesize` is set. Without it they still read one page. `findOneBy()` stays a single one-row request.
+- **CommonJS projects could not load the package at all** (`ERR_PACKAGE_PATH_NOT_EXPORTED`, e.g. a
+  project without `"type": "module"` run through `tsx`). The exports map now has a `default`
+  condition, so those projects work through `tsx`, or with plain `require()` on Node.js 20.19+ / 22.12+.
+  Older Node.js versions get Node's own `ERR_REQUIRE_ESM`, which names the fix.
+- **`validate()` rejected entities exactly as Rally returned them.** Two causes:
+  - The generator dropped the empty value `""` from dropdown lists, but Rally reports an unset
+    rating as `"None"`. So a defect read with `Resolution: "None"` failed validation. Dropdown
+    lists now include `""`, plus `"None"` for ratings. A dropdown whose only value is `""`
+    (unconfigured in the source workspace) no longer gets a list at all.
+  - `validate()` also checked read-only fields. Rally never returns some of them
+    (`FormattedIDPrefix`), and others exceed their declared length (`CommonKey`). It now checks
+    writable fields only.
+
+  On the test workspace: 300 false errors across 159 entities before, none after.
+- **Generated models typed optional fields as never `null`.** Rally returns `null` for unset optional
+  numbers, dates, short strings and dropdowns. They are now typed `| null`, except booleans and
+  long text, which Rally never returns as `null`. This was verified against live responses.
+
+### Changed
+
+- **Built-in models refreshed from Rally's current metadata.** They gain the standard fields Rally
+  has added since they were generated (`AI*` usage counters, `Milestone.StartDate`,
+  `CommonKey`, …), plus `Feature.Defects` and `Project.CustomStates`. Seven `Milestone` counters are
+  now sortable. No field or relation was removed.
+- **TypeScript 5.0 or newer is required** to use the type declarations (`const` type parameters).
+- **Type changes can surface compile errors** in strict TypeScript code (runtime behaviour is
+  unchanged). These are code paths that misbehave at runtime:
+  - using a field that was not selected as if it were present (`const n: string = story.Name`);
+  - using a selected nullable field without a null check (`story.PlanEstimate / 2`);
+  - assigning a value of the wrong type (`story.PlanEstimate = '3'`).
+
+- **Dotted `select` paths through single-object relations cost no extra requests.** Rally fills
+  related objects in place, at any depth, with the fields named in the request's fetch. So
+  `'Owner.DisplayName'` and `'Iteration.Project.Name'` are now part of the main request. Before,
+  they re-read every owner, iteration and project in batches. Objects that come back incomplete (a
+  misspelt field, a `*` wildcard) are still loaded as before. Collections still use extra requests,
+  and their members get the same in-place filling below them.
+- The README documents how to use the package from ES module and CommonJS projects and TypeScript
+  `module` settings, plus the `find`/`findBy` paging behaviour.
+
 ## [2.0.3] - 2026-09-21
 
 Documentation-only release; no runtime changes.

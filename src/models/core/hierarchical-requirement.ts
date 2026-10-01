@@ -4,10 +4,103 @@ import { RallyEntity } from '../base-entity.js';
  * Generated model for Hierarchical Requirement
  */
 export class HierarchicalRequirement extends RallyEntity {
+
+    declare FinancialWorkType?: string | null;
+    declare AICacheWriteTokens?: number | null;
+    declare AICacheReadTokens?: number | null;
+    declare AIOutputTokens?: number | null;
+    declare AIInputTokens?: number | null;
+    declare AIUsageEventCountByModel?: string | null;
+    declare AIUsageEventCount?: number | null;
+    declare AITokenUsageByModel?: string | null;
+    declare AITokenTotalUse?: number | null;
+    declare AIAssisted?: boolean;
+    declare FlowStateChangedDate?: string | Date | null;
+    declare ScheduleStatePrefix?: string | null;
+    declare TestCaseCount?: number | null;
+    declare PassingTestCaseCount?: number | null;
+    declare LastRun?: string | Date | null;
+    declare LastBuild?: string | null;
+    declare ScheduleState?: "Defined" | "In-Progress" | "Completed" | "Accepted" | (string & {});
+    declare ObjectUUID?: string;
+    declare ReleaseValue?: string | null;
+    declare IterationValue?: string | null;
+    declare DirectPassingTestCaseCount?: number | null;
+    declare TotalDirectTestCaseCount?: number | null;
+    declare PredecessorNotScheduled?: boolean;
+    declare DragAndDropRank?: string | null;
+    declare DirectChildrenCount?: number | null;
+    declare BlockedReason?: string | null;
+    declare HasParent?: boolean;
+    declare InProgressDate?: string | Date | null;
+    declare PredecessorScheduledInSameOrLaterIteration?: boolean;
+    declare Recycled?: boolean;
+    declare TestCaseStatus?: "NONE" | "NONE_RUN" | "SOME_RUN_NONE_PASSING" | "SOME_RUN_SOME_NOT_PASSING" | "SOME_RUN_ALL_PASSING" | "ALL_RUN_NONE_PASSING" | "ALL_RUN_SOME_NOT_PASSING" | "ALL_RUN_ALL_PASSING" | (string & {});
+    declare DefectStatus?: "NONE" | "SOME_CLOSED" | "NONE_CLOSED" | "ALL_CLOSED" | (string & {});
+    declare TaskStatus?: "NONE" | "DEFINED" | "IN_PROGRESS_BLOCKED" | "IN_PROGRESS" | "COMPLETED_BLOCKED" | "COMPLETED" | (string & {});
+    declare TaskRemainingTotal?: number | null;
+    declare TaskActualTotal?: number | null;
+    declare TaskEstimateTotal?: number | null;
+    declare Blocked?: boolean;
+    declare PlanEstimate?: number | null;
+    declare AcceptedDate?: string | Date | null;
+    declare Package?: "" | "Package A" | "Package B" | "Package C" | (string & {}) | null;
+    declare FormattedIDPrefix?: string;
+    declare FormattedIDID?: number;
+    declare Expedite?: boolean;
+    declare LatestDiscussionAgeInMinutes?: number | null;
+    declare DisplayColor?: string | null;
+    declare Ready?: boolean;
+    declare LastUpdateDate?: string | Date;
+    declare Description?: string;
+    declare Notes?: string;
+    declare Name?: string;
+    declare FormattedID?: string;
+    declare VersionId?: string | null;
+    declare CreationDate?: string | Date;
+    declare ObjectID?: number;
+    declare Ancestors?: any[];
+    declare Risks?: any[];
+    declare FlowState?: any;
+    declare MixedChildren?: any[];
+    declare UnifiedParent?: any;
+    declare TestCases?: any[];
+    declare Defects?: any[];
+    declare Blocker?: any;
+    declare Successors?: any[];
+    declare Predecessors?: any[];
+    declare Release?: any;
+    declare Iteration?: any;
+    declare Tasks?: any[];
+    declare Children?: any[];
+    declare Parent?: any;
+    declare Workspace?: any;
+    declare Subscription?: any;
+    declare Attachments?: any[];
+    declare CreatedBy?: any;
+    declare Connections?: any[];
+    declare Milestones?: any[];
+    declare Changesets?: any[];
+    declare Owner?: any;
+    declare Tags?: any[];
+    declare Discussion?: any[];
+    declare Project?: any;
+    declare RevisionHistory?: any;
+    declare PortfolioItem?: any;
+    declare Feature?: any;
+
     static override readonly entityType = 'hierarchicalrequirement';
 
     static override readonly fields = {
         FinancialWorkType: { type: 'string', maxLength: 256 },
+        AICacheWriteTokens: { type: 'integer', readOnly: true, filterable: false, sortable: false },
+        AICacheReadTokens: { type: 'integer', readOnly: true, filterable: false, sortable: false },
+        AIOutputTokens: { type: 'integer', readOnly: true, filterable: false, sortable: false },
+        AIInputTokens: { type: 'integer', readOnly: true, filterable: false, sortable: false },
+        AIUsageEventCountByModel: { type: 'string', readOnly: true, filterable: false, sortable: false },
+        AIUsageEventCount: { type: 'integer', readOnly: true },
+        AITokenUsageByModel: { type: 'string', readOnly: true, filterable: false, sortable: false },
+        AITokenTotalUse: { type: 'integer', readOnly: true },
         AIAssisted: { type: 'boolean', readOnly: true },
         FlowStateChangedDate: { type: 'date', readOnly: true },
         ScheduleStatePrefix: { type: 'string', readOnly: true, filterable: false, sortable: false },
@@ -38,7 +131,7 @@ export class HierarchicalRequirement extends RallyEntity {
         Blocked: { type: 'boolean' },
         PlanEstimate: { type: 'number', maxFractionalDigits: 2 },
         AcceptedDate: { type: 'date', readOnly: true },
-        Package: { type: 'string', hidden: true, maxLength: 128, enum: ['Package A', 'Package B', 'Package C'], sortable: false },
+        Package: { type: 'string', hidden: true, maxLength: 128, enum: ['', 'Package A', 'Package B', 'Package C'], sortable: false },
         FormattedIDPrefix: { type: 'string', required: true, readOnly: true, maxLength: 10, filterable: false, sortable: false },
         FormattedIDID: { type: 'integer', required: true, readOnly: true, filterable: false, sortable: false },
         Expedite: { type: 'boolean' },

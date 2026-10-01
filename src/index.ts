@@ -33,7 +33,7 @@ export { LazyLink } from './core/lazy-link.js';
 export { RallyDataSource } from './core/rally-datasource.js';
 export type { IRallyDataSourceOptions } from './core/rally-datasource.js';
 export { RallyRepository } from './core/rally-repository.js';
-export type { IFindOptions, IFindOptionsWithSelect, SelectResult } from './core/rally-repository.js';
+export type { IFindOptions, IFindOptionsWithSelect, Persisted, SelectResult } from './core/rally-repository.js';
 
 // Utilities
 export {

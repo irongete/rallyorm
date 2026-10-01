@@ -4,6 +4,49 @@ import { RallyEntity } from '../base-entity.js';
  * Generated model for Task
  */
 export class Task extends RallyEntity {
+
+    declare AIAssisted?: boolean;
+    declare ObjectUUID?: string;
+    declare TimeSpent?: number | null;
+    declare DragAndDropRank?: string | null;
+    declare BlockedReason?: string | null;
+    declare Recycled?: boolean;
+    declare TaskIndex?: number;
+    declare Blocked?: boolean;
+    declare State?: "Defined" | "In-Progress" | "Completed" | (string & {});
+    declare Actuals?: number | null;
+    declare ToDo?: number | null;
+    declare Estimate?: number | null;
+    declare FormattedIDPrefix?: string;
+    declare FormattedIDID?: number;
+    declare Expedite?: boolean;
+    declare LatestDiscussionAgeInMinutes?: number | null;
+    declare DisplayColor?: string | null;
+    declare Ready?: boolean;
+    declare LastUpdateDate?: string | Date;
+    declare Description?: string;
+    declare Notes?: string;
+    declare Name?: string;
+    declare FormattedID?: string;
+    declare VersionId?: string | null;
+    declare CreationDate?: string | Date;
+    declare ObjectID?: number;
+    declare Workspace?: any;
+    declare Subscription?: any;
+    declare WorkProduct?: any;
+    declare Project?: any;
+    declare Release?: any;
+    declare Iteration?: any;
+    declare Attachments?: any[];
+    declare CreatedBy?: any;
+    declare Connections?: any[];
+    declare Milestones?: any[];
+    declare Changesets?: any[];
+    declare Owner?: any;
+    declare Tags?: any[];
+    declare Discussion?: any[];
+    declare RevisionHistory?: any;
+
     static override readonly entityType = 'task';
 
     static override readonly fields = {

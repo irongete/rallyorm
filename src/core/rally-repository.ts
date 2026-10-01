@@ -3,8 +3,10 @@ import { extractObjectIdFromRef, getEntityTypeFromRef, isRallyRef, normalizeEnti
 import type { RallyClient, IQueryOptions } from './rally-client.js';
 import type { RallyDataSource } from './rally-datasource.js';
 import { RallyEntity } from '../models/base-entity.js';
+import type { IRelationDefinition } from '../models/base-entity.js';
 import type { RallyModelClass } from '../models/registry.js';
 import { RallyValidationError, RallyOperationError } from './errors.js';
+import { joinConditions } from './query-utils.js';
 
 /**
  * Repository-level query options.
@@ -30,6 +32,9 @@ interface IIncludeNode {
  * empty list narrows the query to nothing instead of silently widening it to everything.
  */
 const NEVER_MATCHES = '(ObjectID = 0)';
+
+/** Largest page Rally WSAPI serves. */
+const MAX_PAGE_SIZE = 2000;
 
 interface ITagRef {
     _ref: string;
@@ -69,18 +74,25 @@ type KnownKeys<T> = keyof {
  * selected top-level fields made required. Fields that were not selected keep
  * their declared (optional) type, and everything else on the model is untouched.
  *
- * Requires `as const` at the call site so TypeScript infers string literals.
+ * The finders declare `S` as a `const` type parameter, so a select list written inline is
+ * inferred as literals without `as const`; a list held in a `string[]` variable narrows nothing.
  * Only meaningful for models that declare typed properties (such as the ones
  * emitted by `npx rallyorm generate`); the built-in core models type every
  * field as `any` through the `RallyEntity` index signature.
  *
  * @example
- * const r = await repo.findOneBy({ select: ['Name', 'Owner.DisplayName'] as const });
+ * const r = await repo.findOneBy({ select: ['Name', 'Owner.DisplayName'] });
  * r.Name         // string            (selected → required)
  * r.Description  // string | undefined (not selected → stays optional)
  */
 export type SelectResult<T, S extends readonly string[]> =
     T & { [K in Extract<TopLevelField<S[number]>, KnownKeys<T>>]-?: Exclude<T[K], undefined> };
+
+/**
+ * An entity Rally has just created. Rally answers a create with the whole stored object, so
+ * its ObjectID is always present, e.g. `repo.delete(created.ObjectID)`.
+ */
+export type Persisted<T> = T & { ObjectID: number };
 
 /** Version of `IFindOptions` that binds the select list to a typed tuple. */
 export type IFindOptionsWithSelect<TSelect extends readonly string[]> =
@@ -144,27 +156,10 @@ export class RallyRepository<T extends RallyEntity = any> {
      * @param options Query, fetch, pagination, and relationship include options.
      * @returns Matching entities wrapped in the configured model class.
      */
-    find<S extends readonly string[]>(options: IFindOptionsWithSelect<S>): Promise<Array<SelectResult<T, S>>>;
+    find<const S extends readonly string[]>(options: IFindOptionsWithSelect<S>): Promise<Array<SelectResult<T, S>>>;
     find(options?: IFindOptions): Promise<T[]>;
     async find(options: IFindOptions = {}): Promise<T[]> {
-        const normalized = this._normalizeOptions(options);
-        const { include, ...queryOptions } = normalized;
-
-        let entities = await this.client.query<any>(this.entityType, queryOptions);
-
-        entities = this._wrapEntities(entities);
-
-        if (include && include.length > 0) {
-            entities = await this.relationshipLoader.loadRelationships(
-                entities,
-                include,
-                this.modelRegistry
-            );
-
-            this._hydrateIncludedRelationships(entities, include);
-        }
-
-        return entities;
+        return this._findMany(undefined, options, false);
     }
 
     /**
@@ -173,36 +168,13 @@ export class RallyRepository<T extends RallyEntity = any> {
      * @param options Repository query options including `where` filters and optional includes.
      * @returns Matching entities wrapped in the configured model class.
      */
-    findBy<S extends readonly string[]>(options: IFindOptionsWithSelect<S> & { where?: Record<string, unknown> }): Promise<Array<SelectResult<T, S>>>;
+    findBy<const S extends readonly string[]>(options: IFindOptionsWithSelect<S> & { where?: Record<string, unknown> }): Promise<Array<SelectResult<T, S>>>;
     findBy(options?: IFindOptions): Promise<T[]>;
     async findBy(options: IFindOptions = {}): Promise<T[]> {
         const { where = {}, ...otherOptions } = options;
 
         this._warnNonFilterableFields(where);
-        const query = this._buildQuery(where);
-        const normalized = this._normalizeOptions(otherOptions);
-        const { include, ...queryOptions } = normalized;
-
-        this.client.logger?.debug(`[${this.entityType}] Query: ${query}`);
-
-        let entities = await this.client.query<any>(this.entityType, {
-            query,
-            ...queryOptions
-        });
-
-        entities = this._wrapEntities(entities);
-
-        if (include && include.length > 0) {
-            entities = await this.relationshipLoader.loadRelationships(
-                entities,
-                include,
-                this.modelRegistry
-            );
-
-            this._hydrateIncludedRelationships(entities, include);
-        }
-
-        return entities;
+        return this._findMany(this._buildQuery(where), otherOptions, false);
     }
 
     /**
@@ -211,36 +183,54 @@ export class RallyRepository<T extends RallyEntity = any> {
      * @param options Repository query options including `where`, ordering, and includes.
      * @returns Every matching entity up to the optional `maxResults` limit.
      */
-    findAllBy<S extends readonly string[]>(options: IFindOptionsWithSelect<S> & { where?: Record<string, unknown> }): Promise<Array<SelectResult<T, S>>>;
+    findAllBy<const S extends readonly string[]>(options: IFindOptionsWithSelect<S> & { where?: Record<string, unknown> }): Promise<Array<SelectResult<T, S>>>;
     findAllBy(options?: IFindOptions): Promise<T[]>;
     async findAllBy(options: IFindOptions = {}): Promise<T[]> {
         const { where = {}, ...otherOptions } = options;
 
         this._warnNonFilterableFields(where);
-        const query = this._buildQuery(where);
-        const normalized = this._normalizeOptions(otherOptions);
-        const { include, ...queryOptions } = normalized;
+        return this._findMany(this._buildQuery(where), otherOptions, true);
+    }
 
-        this.client.logger?.debug(`[${this.entityType}] QueryAll: ${query}`);
+    /**
+     * Shared query path for `find`, `findBy` and `findAllBy`.
+     *
+     * A single-page call becomes a paged one when `maxResults` is given: it is a total, and
+     * honouring it on one page would silently cap the result at `pagesize`.
+     *
+     * @param query Query built from `where`; a raw `query` option still takes precedence.
+     * @param options Repository query options without `where`.
+     * @param allPages Whether to traverse every page even without `maxResults`.
+     */
+    private async _findMany(query: string | undefined, options: IFindOptions, allPages: boolean): Promise<T[]> {
+        const { include, ...queryOptions } = this._normalizeOptions(options);
+        const paged = allPages || queryOptions.maxResults !== undefined;
 
-        let entities = await this.client.queryAll<any>(this.entityType, {
-            query,
-            ...queryOptions
-        });
-
-        entities = this._wrapEntities(entities);
-
-        if (include && include.length > 0) {
-            entities = await this.relationshipLoader.loadRelationships(
-                entities,
-                include,
-                this.modelRegistry
-            );
-
-            this._hydrateIncludedRelationships(entities, include);
+        if (paged && !allPages && queryOptions.pagesize === undefined && typeof queryOptions.maxResults === 'number') {
+            queryOptions.pagesize = Math.min(Math.max(queryOptions.maxResults, 1), MAX_PAGE_SIZE);
         }
 
-        return entities;
+        const request = { query, ...queryOptions };
+        this.client.logger?.debug(`[${this.entityType}] ${paged ? 'QueryAll' : 'Query'}: ${request.query ?? ''}`);
+
+        const entities = this._wrapEntities(paged
+            ? await this.client.queryAll<any>(this.entityType, request)
+            : await this.client.query<any>(this.entityType, request));
+
+        return this._loadIncludes(entities, include);
+    }
+
+    /**
+     * Eager-load and hydrate the relation paths requested through `select`.
+     */
+    private async _loadIncludes<E extends T | T[]>(entities: E, include: string[] | undefined): Promise<E> {
+        if (!include || include.length === 0) {
+            return entities;
+        }
+
+        const loaded = await this.relationshipLoader.loadRelationships(entities as any, include, this.modelRegistry) as E;
+        this._hydrateIncludedRelationships(loaded, include);
+        return loaded;
     }
 
     /**
@@ -251,7 +241,7 @@ export class RallyRepository<T extends RallyEntity = any> {
      * @returns The matching entity, or `null` when no record is found.
      * @throws RallyValidationError When `idOrWhere` is missing, empty or not an ObjectID/`where` object.
      */
-    async findOne(idOrWhere: string | number | Record<string, unknown>, options: IFindOptions = {}): Promise<T | null> {
+    async findOne(idOrWhere: string | number | Record<string, unknown> | undefined, options: IFindOptions = {}): Promise<T | null> {
         let entity: T | null;
 
         // A missing id (typically an ObjectID that was never fetched) must not fall through to
@@ -281,19 +271,7 @@ export class RallyRepository<T extends RallyEntity = any> {
                 return null;
             }
 
-            entity = this._wrapEntity(entity);
-
-            if (include && include.length > 0) {
-                entity = await this.relationshipLoader.loadRelationships(
-                    entity as T & Record<string, unknown>,
-                    include,
-                    this.modelRegistry
-                ) as T;
-
-                this._hydrateIncludedRelationships(entity, include);
-            }
-
-            return entity;
+            return this._loadIncludes(this._wrapEntity(entity), include);
         } else {
             const where = idOrWhere;
             return this.findOneBy({ where, ...options });
@@ -306,10 +284,11 @@ export class RallyRepository<T extends RallyEntity = any> {
      * @param options Repository query options with a `where` clause.
      * @returns The first matching entity, or `null` when no record is found.
      */
-    findOneBy<S extends readonly string[]>(options: IFindOptionsWithSelect<S> & { where?: Record<string, unknown> }): Promise<SelectResult<T, S> | null>;
+    findOneBy<const S extends readonly string[]>(options: IFindOptionsWithSelect<S> & { where?: Record<string, unknown> }): Promise<SelectResult<T, S> | null>;
     findOneBy(options?: IFindOptions): Promise<T | null>;
     async findOneBy(options: IFindOptions = {}): Promise<T | null> {
-        const results = await this.findBy({ ...options, pagesize: 1, start: 1 });
+        // One request for one entity, whatever paging options the caller passed.
+        const results = await this.findBy({ ...options, pagesize: 1, start: 1, maxResults: undefined, limit: undefined } as IFindOptions);
         return results[0] ?? null;
     }
 
@@ -325,7 +304,7 @@ export class RallyRepository<T extends RallyEntity = any> {
      * This operation is **not atomic**: if one tag creation fails after others have already been
      * created in Rally, those previously created tags remain and are not rolled back.
      */
-    async create(entityData: any): Promise<T> {
+    async create(entityData: any): Promise<Persisted<T>> {
         if (!entityData || typeof entityData !== 'object') {
             throw new RallyValidationError('Entity data is required and must be an object');
         }
@@ -333,7 +312,7 @@ export class RallyRepository<T extends RallyEntity = any> {
         const cleanData = await this._prepareSaveData(entityData);
 
         const result = await this.client.create(this.entityType, cleanData);
-        return this._wrapEntity(result);
+        return this._wrapEntity(result) as Persisted<T>;
     }
 
     /**
@@ -426,7 +405,7 @@ export class RallyRepository<T extends RallyEntity = any> {
      * @throws RallyValidationError When `objectId` is missing.
      * @throws RallyOperationError When Rally rejects the delete request.
      */
-    async delete(objectId: string | number): Promise<boolean> {
+    async delete(objectId: string | number | undefined): Promise<boolean> {
         if (!objectId) {
             throw new RallyValidationError('ObjectID is required');
         }
@@ -503,7 +482,7 @@ export class RallyRepository<T extends RallyEntity = any> {
             } else {
                 const orConditions = where.$or.map((condition: any) => this._buildQuery(condition)).filter(Boolean);
                 if (orConditions.length > 0) {
-                    conditions.push(`(${orConditions.join(' OR ')})`);
+                    conditions.push(joinConditions(orConditions, 'OR'));
                 }
             }
         }
@@ -511,7 +490,7 @@ export class RallyRepository<T extends RallyEntity = any> {
         if (Array.isArray(where.$and)) {
             const andConditions = where.$and.map((condition: any) => this._buildQuery(condition)).filter(Boolean);
             if (andConditions.length > 0) {
-                conditions.push(`(${andConditions.join(' AND ')})`);
+                conditions.push(joinConditions(andConditions, 'AND'));
             }
         }
 
@@ -526,11 +505,7 @@ export class RallyRepository<T extends RallyEntity = any> {
             }
         }
 
-        if (conditions.length === 0) {
-            return '';
-        }
-
-        return conditions.length === 1 ? conditions[0] : `(${conditions.join(' AND ')})`;
+        return joinConditions(conditions, 'AND');
     }
 
     /**
@@ -564,9 +539,7 @@ export class RallyRepository<T extends RallyEntity = any> {
                 )
                 .filter(Boolean);
 
-            return nestedConditions.length > 1
-                ? `(${nestedConditions.join(' AND ')})`
-                : nestedConditions[0] || '';
+            return joinConditions(nestedConditions, 'AND');
         }
 
         if (typeof value === 'object' && this._isOperatorObject(value)) {
@@ -638,7 +611,7 @@ export class RallyRepository<T extends RallyEntity = any> {
             }
         }
 
-        return conditions.length > 1 ? `(${conditions.join(' AND ')})` : conditions[0] || '';
+        return joinConditions(conditions, 'AND');
     }
 
     /**
@@ -657,7 +630,7 @@ export class RallyRepository<T extends RallyEntity = any> {
             .map(v => v === null ? `(${this._escapeField(field)} = null)` : this._buildEqualityCondition(field, v))
             .filter(Boolean);
 
-        return parts.length === 1 ? parts[0] : `(${parts.join(' OR ')})`;
+        return joinConditions(parts, 'OR');
     }
 
     private _isOperatorObject(obj: any): boolean {
@@ -828,6 +801,26 @@ export class RallyRepository<T extends RallyEntity = any> {
                 }
                 if (!include.includes(field)) {
                     include.push(field);
+                }
+            }
+        }
+
+        // Rally fills related objects in place, at any depth, with every field named in the
+        // request's fetch: `fetch=Owner,DisplayName` returns Owner with its DisplayName. Naming the
+        // rest of each path here lets the relationship loader skip objects that already arrive
+        // complete instead of re-reading them (`/user?query=...`); anything incomplete is still
+        // loaded. Only paths starting at a single-object (belongsTo) relation are expanded:
+        // collections are never filled in place, and unknown roots keep the plain loader path.
+        const relations = (this.modelClass?.relations ?? {}) as Record<string, IRelationDefinition>;
+        for (const path of include) {
+            const [root, ...rest] = path.split('.').map(part => part.replace(/\[[^\]]+\]$/, '').trim());
+            const relation = relations[root];
+            if (relation?.type !== 'belongsTo' || relation.isCollection || rest.includes('*')) {
+                continue;
+            }
+            for (const field of [...rest, 'ObjectID']) {
+                if (!fetch.includes(field)) {
+                    fetch.push(field);
                 }
             }
         }
@@ -1259,7 +1252,7 @@ export class RallyRepository<T extends RallyEntity = any> {
         }
 
         const queryParts = tagNames.map(name => `(Name = "${this._escapeValue(name)}")`);
-        const query = queryParts.length === 1 ? queryParts[0] : `(${queryParts.join(' OR ')})`;
+        const query = joinConditions(queryParts, 'OR');
 
         return this.client.query<IRallyTagData>('tag', {
             query,

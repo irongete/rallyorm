@@ -110,6 +110,46 @@ describeLiveWrites('Live Rally Write Integration', function () {
 
 
 
+    it('should reuse existing tags, not duplicate them, when saving three or more string tags', async () => {
+        const suffix = Math.random().toString(36).slice(2, 8);
+        const tagNames = ['a', 'b', 'c'].map(letter => `rallyorm-multi-${letter}-${suffix}`);
+
+        const createdTagIds: Array<string | number> = [];
+        let createdDefectId: string | number | undefined;
+
+        try {
+            const existing = [];
+            for (const Name of tagNames) {
+                const tag = await tags.create({ Name });
+                createdTagIds.push(tag.ObjectID);
+                existing.push(tag);
+            }
+
+            const defect = await defects.create({
+                Name: `RallyORM multi-tag ${suffix}`,
+                Description: 'Multi-tag reuse test. Safe to delete.',
+                Project: { _ref: `/project/${config.testProjectOid}` },
+                Tags: tagNames
+            });
+            createdDefectId = defect.ObjectID;
+
+            // The name lookup is one OR query over all names; before the fix it was malformed,
+            // Rally answered "no matches" and every tag was created again.
+            // Read the attached tags straight from Rally: the relationship loader resolves tags
+            // by name, which would hide duplicates.
+            const raw = await dataSource.client.get<any>('defect', createdDefectId, { fetch: 'Tags' });
+            const attached = await dataSource.client.queryCollectionAll<any>(raw.Tags._ref, { fetch: 'ObjectID' });
+            expect(attached.map(tag => String(tag.ObjectID))).to.have.members(existing.map(tag => String(tag.ObjectID)));
+        } finally {
+            if (createdDefectId) {
+                await defects.delete(createdDefectId).catch(() => {});
+            }
+            for (const id of createdTagIds) {
+                await tags.delete(id).catch(() => {});
+            }
+        }
+    });
+
     it('should accept a mix of ref-based and string tags when saving a defect', async () => {
         const suffix = Math.random().toString(36).slice(2, 8);
         const stringTagName = `rallyorm-mix-${suffix}`;

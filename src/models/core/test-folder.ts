@@ -4,6 +4,26 @@ import { RallyEntity } from '../base-entity.js';
  * Generated model for Test Folder
  */
 export class TestFolder extends RallyEntity {
+
+    declare ObjectUUID?: string;
+    declare FormattedID?: string;
+    declare Name?: string;
+    declare DisplayColor?: string | null;
+    declare Description?: string;
+    declare VersionId?: string | null;
+    declare CreationDate?: string | Date;
+    declare ObjectID?: number;
+    declare RevisionHistory?: any;
+    declare RecursiveTestCases?: any[];
+    declare Descendants?: any[];
+    declare Parent?: any;
+    declare Children?: any[];
+    declare Project?: any;
+    declare TestCases?: any[];
+    declare TestFolderStatus?: any;
+    declare Workspace?: any;
+    declare Subscription?: any;
+
     static override readonly entityType = 'testfolder';
 
     static override readonly fields = {

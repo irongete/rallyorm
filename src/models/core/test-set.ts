@@ -4,6 +4,66 @@ import { RallyEntity } from '../base-entity.js';
  * Generated model for Test Set
  */
 export class TestSet extends RallyEntity {
+
+    declare FinancialWorkType?: string | null;
+    declare FlowStateChangedDate?: string | Date | null;
+    declare ScheduleStatePrefix?: string | null;
+    declare ScheduleState?: "Defined" | "In-Progress" | "Completed" | "Accepted" | (string & {});
+    declare ObjectUUID?: string;
+    declare TaskActualTotal?: number | null;
+    declare TaskRemainingTotal?: number | null;
+    declare AcceptedDate?: string | Date | null;
+    declare TaskEstimateTotal?: number | null;
+    declare DefectStatus?: "NONE" | "SOME_CLOSED" | "NONE_CLOSED" | "ALL_CLOSED" | (string & {});
+    declare LastBuild?: string | null;
+    declare LastRun?: string | Date | null;
+    declare TestCaseCount?: number | null;
+    declare PassingTestCaseCount?: number | null;
+    declare TaskStatus?: "NONE" | "DEFINED" | "IN_PROGRESS_BLOCKED" | "IN_PROGRESS" | "COMPLETED_BLOCKED" | "COMPLETED" | (string & {});
+    declare DragAndDropRank?: string | null;
+    declare BlockedReason?: string | null;
+    declare TestCaseStatus?: "NONE" | "NONE_RUN" | "SOME_RUN_NONE_PASSING" | "SOME_RUN_SOME_NOT_PASSING" | "SOME_RUN_ALL_PASSING" | "ALL_RUN_NONE_PASSING" | "ALL_RUN_SOME_NOT_PASSING" | "ALL_RUN_ALL_PASSING" | (string & {});
+    declare Blocked?: boolean;
+    declare PlanEstimate?: number | null;
+    declare ReleaseValue?: string | null;
+    declare IterationValue?: string | null;
+    declare AIAssisted?: boolean;
+    declare FormattedIDPrefix?: string;
+    declare FormattedIDID?: number;
+    declare Expedite?: boolean;
+    declare LatestDiscussionAgeInMinutes?: number | null;
+    declare DisplayColor?: string | null;
+    declare Ready?: boolean;
+    declare LastUpdateDate?: string | Date;
+    declare Description?: string;
+    declare Notes?: string;
+    declare Name?: string;
+    declare FormattedID?: string;
+    declare VersionId?: string | null;
+    declare CreationDate?: string | Date;
+    declare ObjectID?: number;
+    declare Ancestors?: any[];
+    declare FlowState?: any;
+    declare Blocker?: any;
+    declare MixedChildren?: any[];
+    declare ScheduledTestCases?: any[];
+    declare ScheduledChildren?: any[];
+    declare Tasks?: any[];
+    declare TestCases?: any[];
+    declare Iteration?: any;
+    declare Release?: any;
+    declare Workspace?: any;
+    declare Subscription?: any;
+    declare CreatedBy?: any;
+    declare Connections?: any[];
+    declare Milestones?: any[];
+    declare Changesets?: any[];
+    declare Owner?: any;
+    declare Tags?: any[];
+    declare Discussion?: any[];
+    declare Project?: any;
+    declare RevisionHistory?: any;
+
     static override readonly entityType = 'testset';
 
     static override readonly fields = {

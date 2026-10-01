@@ -4,9 +4,40 @@ import { RallyEntity } from '../base-entity.js';
  * Generated model for Iteration
  */
 export class Iteration extends RallyEntity {
+
+    declare CommonKey?: string | null;
+    declare LastUpdateDate?: string | Date;
+    declare PlanEstimate?: number | null;
+    declare ObjectUUID?: string;
+    declare ColorAggregation?: string | null;
+    declare UnplannedWorkItemCount?: number | null;
+    declare TaskActualTotal?: number | null;
+    declare TaskRemainingTotal?: number | null;
+    declare TaskEstimateTotal?: number | null;
+    declare PlannedVelocity?: number | null;
+    declare ChildrenPlannedVelocity?: number | null;
+    declare EndDate?: string | Date;
+    declare StartDate?: string | Date;
+    declare State?: "Planning" | "Committed" | "Accepted" | (string & {});
+    declare Notes?: string;
+    declare Theme?: string;
+    declare Name?: string;
+    declare CascadedToChildren?: boolean;
+    declare SyncedWithParent?: boolean;
+    declare VersionId?: string | null;
+    declare CreationDate?: string | Date;
+    declare ObjectID?: number;
+    declare WorkProducts?: any[];
+    declare Workspace?: any;
+    declare Subscription?: any;
+    declare UserIterationCapacities?: any[];
+    declare Project?: any;
+    declare RevisionHistory?: any;
+
     static override readonly entityType = 'iteration';
 
     static override readonly fields = {
+        CommonKey: { type: 'string', readOnly: true, maxLength: 32, sortable: false },
         LastUpdateDate: { type: 'date', required: true, readOnly: true },
         PlanEstimate: { type: 'number', readOnly: true, maxFractionalDigits: 2, filterable: false, sortable: false },
         ObjectUUID: { type: 'string', required: true, readOnly: true, maxLength: 36, sortable: false },

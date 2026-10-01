@@ -4,9 +4,41 @@ import { RallyEntity } from '../base-entity.js';
  * Generated model for Release
  */
 export class Release extends RallyEntity {
+
+    declare CommonKey?: string | null;
+    declare LastUpdateDate?: string | Date;
+    declare ReleaseBacklogItemsCount?: number | null;
+    declare Accepted?: number | null;
+    declare PlanEstimate?: number | null;
+    declare ObjectUUID?: string;
+    declare TaskActualTotal?: number | null;
+    declare TaskRemainingTotal?: number | null;
+    declare TaskEstimateTotal?: number | null;
+    declare PlannedVelocity?: number | null;
+    declare ReleaseStartDate?: string | Date;
+    declare Notes?: string;
+    declare ChildrenPlannedVelocity?: number | null;
+    declare ReleaseDate?: string | Date;
+    declare GrossEstimateConversionRatio?: number | null;
+    declare Version?: string | null;
+    declare State?: "Planning" | "Active" | "Accepted" | (string & {});
+    declare Theme?: string;
+    declare Name?: string;
+    declare CascadedToChildren?: boolean;
+    declare SyncedWithParent?: boolean;
+    declare VersionId?: string | null;
+    declare CreationDate?: string | Date;
+    declare ObjectID?: number;
+    declare WorkProducts?: any[];
+    declare Workspace?: any;
+    declare Subscription?: any;
+    declare Project?: any;
+    declare RevisionHistory?: any;
+
     static override readonly entityType = 'release';
 
     static override readonly fields = {
+        CommonKey: { type: 'string', readOnly: true, maxLength: 32, sortable: false },
         LastUpdateDate: { type: 'date', required: true, readOnly: true },
         ReleaseBacklogItemsCount: { type: 'integer', readOnly: true, filterable: false, sortable: false },
         Accepted: { type: 'number', readOnly: true, maxFractionalDigits: 2, filterable: false, sortable: false },

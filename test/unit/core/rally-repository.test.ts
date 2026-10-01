@@ -5,6 +5,7 @@ import { RallyValidationError } from '../../../src/core/errors.js';
 import { RallyEntity } from '../../../src/models/base-entity.js';
 import { createMockClient } from '../../setup/test-helpers.js';
 import { mockDefect } from '../../setup/fixtures.js';
+import { rallyQueryParseError } from '../../setup/rally-query-grammar.js';
 
 describe('RallyRepository', function () {
     this.timeout(5000);
@@ -148,7 +149,39 @@ describe('RallyRepository', function () {
             expect(repo._buildQuery({ $or: [] })).to.equal('(ObjectID = 0)');
             expect(repo._buildQuery({ $or: [], State: 'Open' })).to.equal('((ObjectID = 0) AND (State = "Open"))');
             // Alternatives that carry no constraint are still ignored (unchanged behaviour).
-            expect(repo._buildQuery({ $or: [{ State: 'Open' }, {}] })).to.equal('((State = "Open"))');
+            // A single remaining alternative is not double-wrapped: Rally rejects `((State = "Open"))`.
+            expect(repo._buildQuery({ $or: [{ State: 'Open' }, {}] })).to.equal('(State = "Open")');
+        });
+
+        it('should nest three or more AND/OR terms pairwise so Rally can parse them', () => {
+            expect(repo._buildQuery({ State: 'Open', Priority: 'High', Severity: 'Critical' }))
+                .to.equal('(((State = "Open") AND (Priority = "High")) AND (Severity = "Critical"))');
+            expect(repo._buildQuery({ FormattedID: { $in: ['DE1', 'DE2', 'DE3'] } }))
+                .to.equal('(((FormattedID = "DE1") OR (FormattedID = "DE2")) OR (FormattedID = "DE3"))');
+        });
+
+        it('should only ever emit queries that match the Rally grammar', () => {
+            const date = new Date('2026-01-02T03:04:05.678Z');
+            const cases: Record<string, unknown>[] = [
+                { State: 'Open' },
+                { State: 'Open', Priority: 'High' },
+                { State: 'Open', Priority: 'High', Severity: 'Critical', Owner: null },
+                { State: ['Open', 'Submitted', 'Fixed', null] },
+                { FormattedID: { $in: ['DE1', 'DE2', 'DE3', 'DE4'] } },
+                { PlanEstimate: { $gt: 1, $lte: 8, $ne: 5 } },
+                { Project: { Name: 'P', State: 'Open', Owner: null } },
+                { $or: [{ State: 'Open' }, { State: 'Fixed' }, { Priority: 'High' }] },
+                { $or: [{ State: 'Open' }] },
+                { $or: [{ State: 'Open' }, {}] },
+                { $and: [{ State: 'Open' }, { Priority: 'High' }, { Severity: 'Minor' }] },
+                { $or: [{ State: 'Open', Priority: 'High' }, { State: { $in: ['A', 'B', 'C'] } }], CreationDate: { $gte: date }, Tags: { $contains: 'QA' } },
+                { $or: [], State: 'Open', Priority: 'High' }
+            ];
+
+            for (const where of cases) {
+                const query = repo._buildQuery(where);
+                expect(rallyQueryParseError(query), `${JSON.stringify(where)} → ${query}`).to.equal(null);
+            }
         });
 
         it('should serialize Date values as ISO 8601 in every operator position', () => {
@@ -700,6 +733,137 @@ describe('RallyRepository', function () {
             expect(entity?.Project).to.not.be.instanceOf(LazyLink);
             expect(entity?.Project.Name).to.equal('Project 1');
             expect(entity?.toJSON().Project).to.deep.equal({ _ref: '/project/1', _type: 'project', Name: 'Project 1' });
+        });
+    });
+
+    describe('maxResults on single-page finders', () => {
+        const recordingClient = () => {
+            const calls: Array<{ method: string; options: any }> = [];
+            const client = createMockClient({
+                query: async (_type: string, options: any) => { calls.push({ method: 'query', options }); return []; },
+                queryAll: async (_type: string, options: any) => { calls.push({ method: 'queryAll', options }); return []; }
+            });
+            return { calls, repo: new RallyRepository('defect', client) };
+        };
+
+        it('should keep find() to one page when maxResults is not given', async () => {
+            const { calls, repo } = recordingClient();
+            await repo.find({ query: '(State = "Open")' });
+            expect(calls).to.have.length(1);
+            expect(calls[0].method).to.equal('query');
+            expect(calls[0].options.query).to.equal('(State = "Open")');
+        });
+
+        it('should page find() up to maxResults, sizing pages to it', async () => {
+            const { calls, repo } = recordingClient();
+            await repo.find({ query: '(State = "Open")', maxResults: 4000 });
+            expect(calls[0].method).to.equal('queryAll');
+            expect(calls[0].options).to.include({ query: '(State = "Open")', maxResults: 4000, pagesize: 2000 });
+
+            await repo.find({ maxResults: 20 });
+            expect(calls[1].options).to.include({ maxResults: 20, pagesize: 20 });
+        });
+
+        it('should page findBy() up to maxResults and accept the limit alias', async () => {
+            const { calls, repo } = recordingClient();
+            await repo.findBy({ where: { State: 'Open' }, limit: 300 } as any);
+            expect(calls[0].method).to.equal('queryAll');
+            expect(calls[0].options).to.include({ query: '(State = "Open")', maxResults: 300, pagesize: 300 });
+        });
+
+        it('should keep an explicit pagesize when paging up to maxResults', async () => {
+            const { calls, repo } = recordingClient();
+            await repo.findBy({ where: { State: 'Open' }, maxResults: 500, pagesize: 100 });
+            expect(calls[0].options).to.include({ maxResults: 500, pagesize: 100 });
+        });
+
+        it('should leave findAllBy() paging defaults untouched', async () => {
+            const { calls, repo } = recordingClient();
+            await repo.findAllBy({ where: { State: 'Open' }, maxResults: 50 });
+            expect(calls[0].method).to.equal('queryAll');
+            expect(calls[0].options.pagesize).to.equal(undefined);
+        });
+
+        it('should make findOneBy() a single one-row request even when given maxResults', async () => {
+            const { calls, repo } = recordingClient();
+            await repo.findOneBy({ where: { State: 'Open' }, maxResults: 4000 });
+            expect(calls).to.have.length(1);
+            expect(calls[0].method).to.equal('query');
+            expect(calls[0].options).to.include({ pagesize: 1, start: 1 });
+        });
+    });
+
+    describe('related fields filled in place', () => {
+        class UserModel extends RallyEntity {
+            static entityType = 'user';
+            static relations = {};
+        }
+
+        class StoryModel extends RallyEntity {
+            static entityType = 'hierarchicalrequirement';
+            static relations = {
+                Owner: { type: 'belongsTo', entity: 'user', foreignKey: 'Owner' },
+                Tasks: { type: 'hasMany', entity: 'task', foreignKey: 'Tasks', isCollection: true }
+            };
+        }
+
+        const registry = { user: UserModel, hierarchicalrequirement: StoryModel };
+
+        it('should ask Rally to fill single-object relations in the parent fetch', () => {
+            const repo = new RallyRepository('hierarchicalrequirement', createMockClient(), StoryModel, registry) as any;
+
+            expect(repo._parseSelect(['FormattedID', 'Owner.DisplayName', 'Owner.EmailAddress']).fetch)
+                .to.deep.equal(['FormattedID', 'Owner', 'DisplayName', 'ObjectID', 'EmailAddress']);
+            expect(repo._parseSelect(['Owner']).fetch).to.deep.equal(['Owner', 'ObjectID']);
+            // Rally fills nested single objects at any depth, so every segment is named.
+            expect(repo._parseSelect(['Owner.Manager.DisplayName']).fetch).to.deep.equal(['Owner', 'Manager', 'DisplayName', 'ObjectID']);
+            // Collections are never filled in place, and a wildcard needs a real load.
+            expect(repo._parseSelect(['Tasks.Name']).fetch).to.deep.equal(['Tasks']);
+            expect(repo._parseSelect(['Owner.*']).fetch).to.deep.equal(['Owner']);
+        });
+
+        it('should not re-read related objects that Rally already filled in place', async () => {
+            const userQueries: string[] = [];
+            const client = createMockClient({
+                queryAll: async (type: string, options: any) => {
+                    if (type === 'user') {
+                        userQueries.push(options.query);
+                        return [];
+                    }
+                    return [1, 2, 3].map(id => ({
+                        _ref: `/hierarchicalrequirement/${id}`,
+                        _type: 'HierarchicalRequirement',
+                        FormattedID: `US${id}`,
+                        Owner: { _ref: `/user/${id}`, _type: 'User', ObjectID: id, DisplayName: `User ${id}` }
+                    }));
+                }
+            });
+
+            const repo = new RallyRepository('hierarchicalrequirement', client, StoryModel, registry);
+            const stories = await repo.findAllBy({ select: ['FormattedID', 'Owner.DisplayName'] });
+
+            expect(userQueries).to.deep.equal([]);
+            expect(stories.map(s => s.Owner?.DisplayName)).to.deep.equal(['User 1', 'User 2', 'User 3']);
+            expect(stories[0].Owner).to.be.instanceOf(UserModel);
+        });
+
+        it('should still load related objects that arrive without the requested fields', async () => {
+            const userQueries: string[] = [];
+            const client = createMockClient({
+                queryAll: async (type: string, options: any) => {
+                    if (type === 'user') {
+                        userQueries.push(options.query);
+                        return [{ _ref: '/user/1', _type: 'User', ObjectID: 1, DisplayName: 'Loaded' }];
+                    }
+                    return [{ _ref: '/hierarchicalrequirement/1', _type: 'HierarchicalRequirement', Owner: { _ref: '/user/1', _type: 'User' } }];
+                }
+            });
+
+            const repo = new RallyRepository('hierarchicalrequirement', client, StoryModel, registry);
+            const [story] = await repo.findAllBy({ select: ['Owner.DisplayName'] });
+
+            expect(userQueries).to.deep.equal(['(ObjectID = 1)']);
+            expect(story.Owner?.DisplayName).to.equal('Loaded');
         });
     });
 

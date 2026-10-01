@@ -3,6 +3,7 @@ import { RallyClient } from '../../../src/core/rally-client.js';
 import { RelationshipLoader } from '../../../src/core/relationship-loader.js';
 import { RallyEntity } from '../../../src/models/base-entity.js';
 import { createMockClient } from '../../setup/test-helpers.js';
+import { rallyQueryParseError } from '../../setup/rally-query-grammar.js';
 
 async function withEnv<T>(values: Record<string, string | undefined>, callback: () => Promise<T> | T): Promise<T> {
     const originalValues = new Map<string, string | undefined>();
@@ -1231,6 +1232,191 @@ describe('RelationshipLoader', () => {
             const sharedEvents = testCaseEvents.filter(e => e.sourceEntityType === undefined);
             expect(sharedEvents.map(e => e.total)).to.deep.equal([2, 2]);
             expect(sharedEvents.map(e => e.current).sort()).to.deep.equal([1, 2]);
+        });
+    });
+
+    describe('Rally query grammar', () => {
+        // Rally answers an unparseable query with zero results; the mock mirrors that strictly.
+        const assertParseable = (query: string | undefined) => {
+            const error = rallyQueryParseError(String(query));
+            if (error) { throw new Error(`Rally would reject ${query}: ${error}`); }
+        };
+
+        class UserModel extends RallyEntity {
+            static entityType = 'user';
+            static relations = {};
+        }
+
+        it('should batch-load belongsTo targets for three or more distinct refs', async () => {
+            class Story extends RallyEntity {
+                static entityType = 'hierarchicalrequirement';
+                static relations = {
+                    Owner: { type: 'belongsTo', entity: 'user', foreignKey: 'Owner' }
+                };
+            }
+
+            const queries: string[] = [];
+            const client = createMockClient({
+                queryAll: async (_entityType: string, options: { query?: string }) => {
+                    assertParseable(options.query);
+                    queries.push(String(options.query));
+                    return [7, 8, 9].map(id => ({ _ref: `/user/${id}`, _type: 'user', DisplayName: `User ${id}` }));
+                }
+            });
+
+            const loader = new RelationshipLoader(client as any);
+            const stories = [7, 8, 9, 7].map((owner, i) => new Story({
+                _ref: `/hierarchicalrequirement/${i + 1}`,
+                _type: 'hierarchicalrequirement',
+                Owner: { _ref: `/user/${owner}` }
+            }));
+
+            await loader.loadRelationships(stories, ['Owner.DisplayName'], {
+                hierarchicalrequirement: Story,
+                user: UserModel
+            });
+
+            expect(queries).to.deep.equal(['(((ObjectID = 7) OR (ObjectID = 8)) OR (ObjectID = 9))']);
+            expect(stories.map(s => s._data.Owner.DisplayName)).to.deep.equal(['User 7', 'User 8', 'User 9', 'User 7']);
+        });
+
+        it('should build parseable inverse queries for three or more parents', async () => {
+            class Story extends RallyEntity {
+                static entityType = 'hierarchicalrequirement';
+                static relations = {
+                    Tasks: { type: 'hasMany', entity: 'task', foreignKey: 'WorkProduct', inverseRef: true }
+                };
+            }
+
+            const queries: string[] = [];
+            const client = createMockClient({
+                queryAll: async (_entityType: string, options: { query?: string }) => {
+                    assertParseable(options.query);
+                    queries.push(String(options.query));
+                    return [];
+                }
+            });
+
+            const loader = new RelationshipLoader(client as any);
+            const stories = [1, 2, 3].map(id => new Story({ _ref: `/hierarchicalrequirement/${id}`, _type: 'hierarchicalrequirement' }));
+
+            await loader.loadRelationships(stories, ['Tasks'], { hierarchicalrequirement: Story, task: RallyEntity });
+
+            expect(queries).to.have.length(1);
+        });
+
+        it('should not double-wrap a single tag name and should nest several', async () => {
+            class ArtifactModel extends RallyEntity {
+                static entityType = 'artifact';
+                static relations = {
+                    Tags: { type: 'hasMany', entity: 'tag', foreignKey: 'Tags', isCollection: true }
+                };
+            }
+
+            const queries: string[] = [];
+            const client = createMockClient({
+                query: async (_entityType: string, options: { query?: string }) => {
+                    assertParseable(options.query);
+                    queries.push(String(options.query));
+                    return [];
+                }
+            });
+
+            const loader = new RelationshipLoader(client as any);
+            const artifacts = [['QA'], ['QA', 'Backend', 'Regression']].map((names, i) => new ArtifactModel({
+                _ref: `/artifact/${i + 1}`,
+                _type: 'artifact',
+                Tags: { _tagsNameArray: names }
+            }));
+
+            await loader.loadRelationships(artifacts, ['Tags'], { artifact: ArtifactModel });
+
+            expect(queries).to.include('(Name = "QA")');
+            expect(queries).to.include('(((Name = "QA") OR (Name = "Backend")) OR (Name = "Regression"))');
+        });
+    });
+
+    describe('related objects filled in place', () => {
+        class ProjectModel extends RallyEntity {
+            static entityType = 'project';
+            static relations = {};
+        }
+
+        class IterationModel extends RallyEntity {
+            static entityType = 'iteration';
+            static relations = {
+                Project: { type: 'belongsTo', entity: 'project', foreignKey: 'Project' }
+            };
+        }
+
+        class Story extends RallyEntity {
+            static entityType = 'hierarchicalrequirement';
+            static relations = {
+                Iteration: { type: 'belongsTo', entity: 'iteration', foreignKey: 'Iteration' }
+            };
+        }
+
+        const registry = { hierarchicalrequirement: Story, iteration: IterationModel, project: ProjectModel };
+        const story = () => new Story({
+            _ref: '/hierarchicalrequirement/1',
+            _type: 'hierarchicalrequirement',
+            Iteration: { _ref: '/iteration/5' }
+        });
+
+        it('should ask for grandchild fields so the next level arrives filled in place', async () => {
+            const requests: Array<{ type: string; fetch: string }> = [];
+            const client = createMockClient({
+                queryAll: async (type: string, options: { fetch: string }) => {
+                    requests.push({ type, fetch: options.fetch });
+                    return [{
+                        _ref: '/iteration/5', _type: 'Iteration', ObjectID: 5, Name: 'Sprint 5',
+                        Project: { _ref: '/project/9', _type: 'Project', ObjectID: 9, Name: 'Payments' }
+                    }];
+                }
+            });
+
+            const entity = story();
+            await new RelationshipLoader(client as any).loadRelationships(entity, ['Iteration.Name', 'Iteration.Project.Name'], registry);
+
+            expect(requests).to.have.length(1);
+            expect(requests[0].type).to.equal('iteration');
+            expect(requests[0].fetch.split(',')).to.include.members(['ObjectID', 'Name', 'Project']);
+            expect(entity._data.Iteration.Project).to.include({ ObjectID: 9, Name: 'Payments' });
+        });
+
+        it('should skip the request entirely when the parent already carries the fields', async () => {
+            const client = createMockClient({
+                queryAll: async () => { throw new Error('no request expected'); }
+            });
+
+            const entity = new Story({
+                _ref: '/hierarchicalrequirement/1',
+                _type: 'hierarchicalrequirement',
+                Iteration: { _ref: '/iteration/5', _type: 'Iteration', ObjectID: 5, Name: 'Sprint 5' }
+            });
+            await new RelationshipLoader(client as any).loadRelationships(entity, ['Iteration.Name'], registry);
+
+            expect(entity._data.Iteration.Name).to.equal('Sprint 5');
+        });
+
+        it('should still load when a wildcard or a missing field means the object is incomplete', async () => {
+            const loaded: string[] = [];
+            const client = createMockClient({
+                queryAll: async (type: string, options: { fetch: string }) => {
+                    loaded.push(`${type}:${options.fetch}`);
+                    return [{ _ref: '/iteration/5', _type: 'Iteration', ObjectID: 5, Name: 'Sprint 5', StartDate: '2026-01-01' }];
+                }
+            });
+
+            const filled = { _ref: '/iteration/5', _type: 'Iteration', ObjectID: 5, Name: 'Sprint 5' };
+            const first = new Story({ _ref: '/hierarchicalrequirement/1', _type: 'hierarchicalrequirement', Iteration: { ...filled } });
+            await new RelationshipLoader(client as any).loadRelationships(first, ['Iteration.*'], registry);
+
+            const second = new Story({ _ref: '/hierarchicalrequirement/2', _type: 'hierarchicalrequirement', Iteration: { ...filled } });
+            await new RelationshipLoader(client as any).loadRelationships(second, ['Iteration.StartDate'], registry);
+
+            expect(loaded).to.deep.equal(['iteration:true', 'iteration:ObjectID,StartDate']);
+            expect(second._data.Iteration.StartDate).to.equal('2026-01-01');
         });
     });
 });

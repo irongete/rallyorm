@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import { readFileSync } from 'node:fs';
 import { RallyClient } from '../../../src/core/rally-client.js';
+import { RallyOperationError } from '../../../src/core/errors.js';
 import { createMockFetch } from '../../setup/test-helpers.js';
 
 async function withEnv<T>(values: Record<string, string | undefined>, callback: () => Promise<T> | T): Promise<T> {
@@ -593,6 +594,41 @@ describe('RallyClient', function () {
     });
 
     describe('Response Parsing', () => {
+        it('should throw instead of returning an empty page when Rally rejects the query', async () => {
+            let calls = 0;
+            const client = new RallyClient({
+                apiKey: 'test-key',
+                logLevel: 'silent',
+                retries: 2,
+                retryDelayMs: 1,
+                fetch: async (url: RequestInfo | URL) => {
+                    calls++;
+                    return createMockFetch({
+                        '/defect': {
+                            QueryResult: {
+                                Errors: ['Could not parse: Error parsing expression -- expected ")" but saw "OR" instead.'],
+                                Warnings: [],
+                                TotalResultCount: 0,
+                                Results: []
+                            }
+                        }
+                    })(url);
+                }
+            });
+
+            for (const run of [() => client.query('defect', { query: '(A = 1)' }), () => client.queryAll('defect'), () => client.queryCount('defect')]) {
+                try {
+                    await run();
+                    expect.fail('Expected the rejected query to throw');
+                } catch (error: any) {
+                    expect(error).to.be.instanceOf(RallyOperationError);
+                    expect(error.rallyErrors[0]).to.match(/Could not parse/);
+                }
+            }
+            // A parse error is deterministic, so it must not be retried.
+            expect(calls).to.equal(3);
+        });
+
         it('should extract entity from CreateResult', () => {
             const client = new RallyClient({
                 apiKey: 'test-key',

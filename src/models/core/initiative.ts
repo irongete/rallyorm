@@ -4,9 +4,123 @@ import { RallyEntity } from '../base-entity.js';
  * Generated model for Initiative
  */
 export class Initiative extends RallyEntity {
+
+    declare AICacheWriteTokens?: number | null;
+    declare AICacheReadTokens?: number | null;
+    declare AIOutputTokens?: number | null;
+    declare AIInputTokens?: number | null;
+    declare AIUsageEventCountByModel?: string | null;
+    declare AITokenUsageByModel?: string | null;
+    declare AIUsageEventCount?: number | null;
+    declare AITokenTotalUse?: number | null;
+    declare UnEstimatedTotalCountRollup?: number | null;
+    declare AcceptedTotalEstimateRollup?: number | null;
+    declare AcceptedTotalCountRollup?: number | null;
+    declare UnEstimatedDefectCountRollup?: number | null;
+    declare TotalEstimateRollup?: number | null;
+    declare TotalCountRollup?: number | null;
+    declare PercentDoneByTotalEstimateRollup?: number | null;
+    declare PercentDoneByTotalCountRollup?: number | null;
+    declare PercentDoneByDefectEstimateRollup?: number | null;
+    declare PercentDoneByDefectCountRollup?: number | null;
+    declare DefectPlanEstimateTotalRollup?: number | null;
+    declare DefectCountRollup?: number | null;
+    declare AcceptedDefectEstimateTotalRollup?: number | null;
+    declare AcceptedDefectCountRollup?: number | null;
+    declare CapitalApproval?: "" | "None" | "Defined" | "Funded" | "ReadyForCapitalization" | (string & {}) | null;
+    declare AIAssisted?: boolean;
+    declare RefinedEstimateCount?: number | null;
+    declare PreliminaryEstimateCountValue?: number | null;
+    declare LastRollupDate?: string | Date | null;
+    declare BlockedReason?: string | null;
+    declare Blocked?: boolean;
+    declare PreliminaryEstimateValue?: number | null;
+    declare ReleaseValue?: string | null;
+    declare EstimatedProgressByStoryCount?: number | null;
+    declare EstimatedProgressByStoryPoints?: number | null;
+    declare Recycled?: boolean;
+    declare ChildStoryPredecessorNotScheduled?: boolean;
+    declare ChildStoryPredecessorScheduledInSameOrLaterIteration?: boolean;
+    declare ObjectUUID?: string;
+    declare Archived?: boolean;
+    declare RefinedEstimate?: number | null;
+    declare JobSize?: number | null;
+    declare RROEValue?: number | null;
+    declare TimeCriticality?: number | null;
+    declare UserBusinessValue?: number | null;
+    declare WSJFScore?: number | null;
+    declare DragAndDropRank?: string | null;
+    declare PortfolioItemTypeName?: string | null;
+    declare StateChangedDate?: string | Date | null;
+    declare DirectChildrenCount?: number | null;
+    declare PercentDoneByStoryPlanEstimate?: number | null;
+    declare PercentDoneByStoryCount?: number | null;
+    declare ActualEndDate?: string | Date | null;
+    declare ActualStartDate?: string | Date | null;
+    declare PlannedEndDate?: string | Date | null;
+    declare PlannedStartDate?: string | Date | null;
+    declare UnEstimatedLeafStoryCount?: number | null;
+    declare AcceptedLeafStoryPlanEstimateTotal?: number | null;
+    declare LeafStoryPlanEstimateTotal?: number | null;
+    declare AcceptedLeafStoryCount?: number | null;
+    declare LeafStoryCount?: number | null;
+    declare InvestmentCategory?: "" | "None" | "Short Term Growth" | "Strategic Growth" | "Cost Savings" | "Maintenance" | (string & {}) | null;
+    declare RiskScore?: number | null;
+    declare ValueScore?: number | null;
+    declare FormattedIDPrefix?: string;
+    declare FormattedIDID?: number;
+    declare Expedite?: boolean;
+    declare LatestDiscussionAgeInMinutes?: number | null;
+    declare DisplayColor?: string | null;
+    declare Ready?: boolean;
+    declare LastUpdateDate?: string | Date;
+    declare Description?: string;
+    declare Notes?: string;
+    declare Name?: string;
+    declare FormattedID?: string;
+    declare VersionId?: string | null;
+    declare CreationDate?: string | Date;
+    declare ObjectID?: number;
+    declare Ancestors?: any[];
+    declare PortfolioItemFlowState?: any;
+    declare Metrics?: any[];
+    declare Products?: any[];
+    declare Objectives?: any[];
+    declare Blocker?: any;
+    declare Risks?: any[];
+    declare Investments?: any[];
+    declare Collaborators?: any[];
+    declare Attachments?: any[];
+    declare PortfolioItemType?: any;
+    declare CapacityPlans?: any[];
+    declare PreliminaryEstimate?: any;
+    declare Workspace?: any;
+    declare Subscription?: any;
+    declare CreatedBy?: any;
+    declare Connections?: any[];
+    declare Milestones?: any[];
+    declare Changesets?: any[];
+    declare Owner?: any;
+    declare Tags?: any[];
+    declare Discussion?: any[];
+    declare Project?: any;
+    declare RevisionHistory?: any;
+    declare Children?: any[];
+    declare State?: any;
+    declare Successors?: any[];
+    declare Predecessors?: any[];
+
     static override readonly entityType = 'portfolioitem/initiative';
 
     static override readonly fields = {
+        AICacheWriteTokens: { type: 'integer', readOnly: true, filterable: false, sortable: false },
+        AICacheReadTokens: { type: 'integer', readOnly: true, filterable: false, sortable: false },
+        AIOutputTokens: { type: 'integer', readOnly: true, filterable: false, sortable: false },
+        AIInputTokens: { type: 'integer', readOnly: true, filterable: false, sortable: false },
+        AIUsageEventCountByModel: { type: 'string', readOnly: true, filterable: false, sortable: false },
+        AITokenUsageByModel: { type: 'string', readOnly: true, filterable: false, sortable: false },
+        AIUsageEventCount: { type: 'integer', readOnly: true },
+        AITokenTotalUse: { type: 'integer', readOnly: true },
         UnEstimatedTotalCountRollup: { type: 'integer', readOnly: true, sortable: false },
         AcceptedTotalEstimateRollup: { type: 'number', readOnly: true, sortable: false },
         AcceptedTotalCountRollup: { type: 'integer', readOnly: true, sortable: false },
@@ -21,7 +135,7 @@ export class Initiative extends RallyEntity {
         DefectCountRollup: { type: 'integer', readOnly: true, sortable: false },
         AcceptedDefectEstimateTotalRollup: { type: 'number', readOnly: true, sortable: false },
         AcceptedDefectCountRollup: { type: 'integer', readOnly: true, sortable: false },
-        CapitalApproval: { type: 'string', maxLength: 256, enum: ['Defined', 'Funded', 'ReadyForCapitalization'] },
+        CapitalApproval: { type: 'string', maxLength: 256, enum: ['', 'None', 'Defined', 'Funded', 'ReadyForCapitalization'] },
         AIAssisted: { type: 'boolean', readOnly: true },
         RefinedEstimateCount: { type: 'integer' },
         PreliminaryEstimateCountValue: { type: 'integer', readOnly: true },
@@ -58,7 +172,7 @@ export class Initiative extends RallyEntity {
         LeafStoryPlanEstimateTotal: { type: 'number', readOnly: true },
         AcceptedLeafStoryCount: { type: 'integer', readOnly: true },
         LeafStoryCount: { type: 'integer', readOnly: true },
-        InvestmentCategory: { type: 'string', maxLength: 128, enum: ['Short Term Growth', 'Strategic Growth', 'Cost Savings', 'Maintenance'] },
+        InvestmentCategory: { type: 'string', maxLength: 128, enum: ['', 'None', 'Short Term Growth', 'Strategic Growth', 'Cost Savings', 'Maintenance'] },
         RiskScore: { type: 'integer' },
         ValueScore: { type: 'integer' },
         FormattedIDPrefix: { type: 'string', required: true, readOnly: true, maxLength: 10, filterable: false, sortable: false },

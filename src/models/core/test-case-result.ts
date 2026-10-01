@@ -4,6 +4,25 @@ import { RallyEntity } from '../base-entity.js';
  * Generated model for Test Case Result
  */
 export class TestCaseResult extends RallyEntity {
+
+    declare ObjectUUID?: string;
+    declare Duration?: number | null;
+    declare Notes?: string;
+    declare Verdict?: "Blocked" | "Error" | "Fail" | "Inconclusive" | "Pass" | (string & {});
+    declare Date?: string | Date;
+    declare Build?: string;
+    declare VersionId?: string | null;
+    declare CreationDate?: string | Date;
+    declare ObjectID?: number;
+    declare Project?: any;
+    declare WorkProduct?: any;
+    declare Tester?: any;
+    declare TestSet?: any;
+    declare Attachments?: any[];
+    declare TestCase?: any;
+    declare Workspace?: any;
+    declare Subscription?: any;
+
     static override readonly entityType = 'testcaseresult';
 
     static override readonly fields = {

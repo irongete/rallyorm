@@ -4,6 +4,17 @@ import { RallyEntity } from '../base-entity.js';
  * Generated model for Tag
  */
 export class Tag extends RallyEntity {
+
+    declare ObjectUUID?: string;
+    declare UsageCount?: number | null;
+    declare Archived?: boolean;
+    declare Name?: string;
+    declare VersionId?: string | null;
+    declare CreationDate?: string | Date;
+    declare ObjectID?: number;
+    declare Workspace?: any;
+    declare Subscription?: any;
+
     static override readonly entityType = 'tag';
 
     static override readonly fields = {

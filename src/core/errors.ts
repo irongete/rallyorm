@@ -37,7 +37,8 @@ export class RallyPermissionError extends RallyError {
 }
 
 /**
- * Thrown when the Rally WSAPI returns `OperationResult.Errors`, or the response does not
+ * Thrown when the Rally WSAPI returns `OperationResult.Errors` or `QueryResult.Errors` (for
+ * example a query Rally cannot parse), or the response does not
  * confirm a successful operation after all retries are exhausted.
  *
  * @property rallyErrors   - Raw error strings returned by Rally.

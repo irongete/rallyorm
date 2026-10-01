@@ -4,6 +4,36 @@ import { RallyEntity } from '../base-entity.js';
  * Generated model for Project
  */
 export class Project extends RallyEntity {
+
+    declare LastUpdatedDate?: string | Date;
+    declare ObjectUUID?: string;
+    declare SchemaVersion?: string | null;
+    declare TaskStateRollupEnabled?: boolean;
+    declare Name?: string;
+    declare State?: "Open" | "Closed" | (string & {});
+    declare Notes?: string;
+    declare Description?: string;
+    declare VersionId?: string | null;
+    declare CreationDate?: string | Date;
+    declare ObjectID?: number;
+    declare Objectives?: any[];
+    declare CustomStates?: any[];
+    declare AllUsers?: any[];
+    declare WorkRules?: any[];
+    declare Milestones?: any[];
+    declare Workspace?: any;
+    declare Viewers?: any[];
+    declare RevisionHistory?: any;
+    declare Editors?: any[];
+    declare TeamMembers?: any[];
+    declare Owner?: any;
+    declare BuildDefinitions?: any[];
+    declare Children?: any[];
+    declare Parent?: any;
+    declare Releases?: any[];
+    declare Iterations?: any[];
+    declare Subscription?: any;
+
     static override readonly entityType = 'project';
 
     static override readonly fields = {
@@ -25,6 +55,12 @@ export class Project extends RallyEntity {
             type: 'hasMany',
             entity: 'Objective',
             isCollection: true
+        },
+        CustomStates: {
+            type: 'hasMany',
+            entity: 'BaseKanbanState',
+            isCollection: true,
+            readOnly: true
         },
         AllUsers: {
             type: 'hasMany',

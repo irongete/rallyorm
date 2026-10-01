@@ -260,6 +260,11 @@ export class RallyEntity {
     /**
      * Validate the current entity payload against the static field definitions.
      *
+     * Only writable fields are checked. Fields marked `readOnly` are filled in by Rally and
+     * stripped from every write, and Rally's metadata for them is not reliable enough to
+     * validate against: required hidden fields such as `FormattedIDPrefix` are never returned,
+     * and some values exceed their declared `MaxLength`.
+     *
      * @returns `true` when no validation errors are found.
      */
     validate(): boolean {
@@ -268,6 +273,9 @@ export class RallyEntity {
         const relations = (this.constructor as typeof RallyEntity).relations || {};
 
         for (const [fieldName, rules] of Object.entries(fields)) {
+            if (rules.readOnly) {
+                continue;
+            }
             const value = this._data[fieldName];
             this._validateField(fieldName, value, rules, relations[fieldName]);
         }

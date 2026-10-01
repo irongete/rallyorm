@@ -1,7 +1,9 @@
 import { expect } from 'chai';
 import { RallyRepository } from '../../../src/core/rally-repository.js';
-import type { SelectResult } from '../../../src/core/rally-repository.js';
+import type { Persisted, SelectResult } from '../../../src/core/rally-repository.js';
 import { RallyEntity } from '../../../src/models/base-entity.js';
+import { HierarchicalRequirement } from '../../../src/models/core/hierarchical-requirement.js';
+import { Defect } from '../../../src/models/core/defect.js';
 import { createMockClient } from '../../setup/test-helpers.js';
 
 /**
@@ -40,6 +42,23 @@ type _customFieldIsAny = Assert<Equals<Narrowed['c_Anything'], any>>;
 // A widened `string[]` (no `as const`) selects nothing and degrades to the plain model.
 type _widenedIsPlainModel = Assert<SelectResult<TypedStory, string[]> extends TypedStory ? (TypedStory extends SelectResult<TypedStory, string[]> ? true : false) : false>;
 
+// The built-in models declare their fields with the types Rally returns.
+type Story = HierarchicalRequirement;
+type _storyName = Assert<Equals<Story['Name'], string | undefined>>;
+// Optional numbers and dates can come back null when unset.
+type _storyEstimate = Assert<Equals<Story['PlanEstimate'], number | null | undefined>>;
+// Constrained fields suggest Rally's values but accept a workspace's own ones.
+const _customState: Story['ScheduleState'] = 'Released';
+const _knownState: Story['ScheduleState'] = 'Accepted';
+// An empty rating reads back as "None".
+const _noSeverity: Defect['Severity'] = 'None';
+// Relations stay `any`: at runtime they are a loaded model or a LazyLink.
+type _storyOwner = Assert<Equals<Story['Owner'], any>>;
+// Undeclared (custom) fields keep working through the index signature.
+type _storyCustom = Assert<Equals<Story['c_MyField'], any>>;
+// A created entity always has its ObjectID.
+type _createdId = Assert<Equals<Persisted<Story>['ObjectID'], number>>;
+
 describe('select typed overloads', () => {
     it('should narrow the result type when the select list is passed as const', async () => {
         const client = createMockClient({
@@ -57,16 +76,46 @@ describe('select typed overloads', () => {
         expect(description).to.equal('Text');
     });
 
-    it('should keep the plain model type when select is not a readonly tuple', async () => {
+    it('should narrow an inline select list without as const', async () => {
         const client = createMockClient({
             query: async () => [{ _ref: '/hierarchicalrequirement/1', Name: 'Story' }]
         });
         const repo = new RallyRepository<TypedStory>('hierarchicalrequirement', client, TypedStory);
 
-        const stories = await repo.find({ select: ['Name'] });
+        const [story] = await repo.find({ select: ['Name', 'Owner.DisplayName'] });
+
+        // Type-level: the finders infer the inline list as literals (const type parameter).
+        const name: string = story.Name;
+        type _inlineNarrows = Assert<Equals<typeof story.Name, string>>;
+        type _othersStayOptional = Assert<Equals<typeof story.PlanEstimate, number | undefined>>;
+
+        expect(name).to.equal('Story');
+    });
+
+    it('should keep the plain model type when select is a string[] variable', async () => {
+        const client = createMockClient({
+            query: async () => [{ _ref: '/hierarchicalrequirement/1', Name: 'Story' }]
+        });
+        const repo = new RallyRepository<TypedStory>('hierarchicalrequirement', client, TypedStory);
+
+        const fields: string[] = ['Name'];
+        const stories = await repo.find({ select: fields });
         const story: TypedStory = stories[0];
+        type _variableDoesNotNarrow = Assert<Equals<typeof stories[0]['Name'], string | undefined>>;
 
         expect(story).to.be.instanceOf(TypedStory);
         expect(story.Name).to.equal('Story');
+    });
+
+    it('should type a created entity with its ObjectID', async () => {
+        const client = createMockClient({
+            create: async () => ({ _ref: '/hierarchicalrequirement/7', ObjectID: 7, Name: 'New' })
+        });
+        const repo = new RallyRepository<HierarchicalRequirement>('hierarchicalrequirement', client, HierarchicalRequirement);
+
+        const created = await repo.create({ Name: 'New' });
+        const id: number = created.ObjectID;
+
+        expect(id).to.equal(7);
     });
 });

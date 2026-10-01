@@ -10,6 +10,18 @@ export interface IGeneratorOptions {
     baseImport?: string;
     /** If provided, only generate models whose ElementName is in this list. */
     include?: string[];
+    /**
+     * Type constrained fields as their allowed values plus any other string
+     * (`'Defined' | 'Accepted' | (string & {})`) instead of only the allowed values.
+     * Editors still suggest the known values, but values added later by a workspace
+     * admin keep compiling. Used for the models shipped with RallyORM.
+     */
+    openEnums?: boolean;
+    /**
+     * Leave out the workspace's custom attributes (`c_*`), for models meant to be shared
+     * across workspaces such as the ones shipped with RallyORM.
+     */
+    excludeCustomFields?: boolean;
 }
 
 /** AttributeTypes that map to a scalar/string TS value (not relations). */
@@ -17,6 +29,13 @@ const STRING_LIKE_TYPES = new Set(['STRING', 'TEXT', 'STATE', 'RATING', 'RAW']);
 
 /** AttributeTypes for which AllowedValues contain meaningful string enum literals. */
 const ENUM_ELIGIBLE_TYPES = new Set(['STRING', 'STATE', 'RATING']);
+
+/**
+ * AttributeTypes Rally never returns as `null` when unset: booleans come back `false` and
+ * TEXT as `""`. Every other optional attribute can be `null` (verified against live WSAPI
+ * responses; even ratings, which usually report an empty value as `"None"`).
+ */
+const NEVER_NULL_TYPES = new Set(['BOOLEAN', 'TEXT']);
 
 const KNOWN_DATASOURCE_GETTERS = new Map<string, string>([
     ['hierarchicalrequirement', 'userStories'],
@@ -99,9 +118,15 @@ function quoteTypeLiteral(value: string): string {
     return JSON.stringify(value.replace(/\\/g, '\\\\'));
 }
 
-function mapAttributeTypeToTsType(attrType: string, enumValues?: string[]): string {
+function mapAttributeTypeToTsType(attr: { AttributeType: string; Required?: boolean }, enumValues: string[] | undefined, openEnums: boolean): string {
+    const type = mapValueTsType(attr.AttributeType, enumValues, openEnums);
+    return !attr.Required && !NEVER_NULL_TYPES.has(attr.AttributeType) ? `${type} | null` : type;
+}
+
+function mapValueTsType(attrType: string, enumValues: string[] | undefined, openEnums: boolean): string {
     if (enumValues && enumValues.length > 0) {
-        return enumValues.map(value => quoteTypeLiteral(value)).join(' | ');
+        const literals = enumValues.map(value => quoteTypeLiteral(value));
+        return (openEnums ? [...literals, '(string & {})'] : literals).join(' | ');
     }
 
     if (attrType === 'INTEGER' || attrType === 'QUANTITY' || attrType === 'DECIMAL') {
@@ -223,13 +248,17 @@ export async function generateModels(options: IGeneratorOptions): Promise<void> 
         }
 
         // Fetch AllowedValues in parallel for constrained string/state/rating fields
+        if (options.excludeCustomFields) {
+            attributesResponse = attributesResponse.filter((attr: any) => !attr.Custom);
+        }
+
         const enumMap = await fetchEnumValues(client, attributesResponse);
 
         const fileStem = toFileStem(className);
         const fileName = `${fileStem}.ts`;
         const filePath = path.join(outputDir, fileName);
 
-        const classContent = generateClassContent(className, typeDef, attributesResponse, enumMap, baseImport);
+        const classContent = generateClassContent(className, typeDef, attributesResponse, enumMap, baseImport, options.openEnums ?? false);
         fs.writeFileSync(filePath, classContent, 'utf-8');
 
         if (!seenClassNames.has(className)) {
@@ -288,9 +317,20 @@ async function fetchEnumValues(client: RallyClient, attributes: any[]): Promise<
                     fetch: 'StringValue',
                     pagesize: 200
                 });
-                const values = avItems
+                const values: string[] = avItems
                     .map((v: any) => v.StringValue)
-                    .filter((v: any) => v !== null && v !== undefined && v !== '');
+                    .filter((v: any) => v !== null && v !== undefined);
+                // A list holding only the "no value" choice is a dropdown nobody configured
+                // here; other workspaces fill it with their own values, so it constrains nothing.
+                if (!values.some(value => value !== '')) {
+                    return { elementName: attr.ElementName, values: [] };
+                }
+                // Rally lists "" as the "no value" choice (writing it clears the field) and
+                // reports an empty rating back as "None", so both are valid values.
+                const emptyIndex = values.indexOf('');
+                if (attr.AttributeType === 'RATING' && emptyIndex >= 0 && !values.includes('None')) {
+                    values.splice(emptyIndex + 1, 0, 'None');
+                }
                 return { elementName: attr.ElementName, values };
             } catch {
                 return { elementName: attr.ElementName, values: [] };
@@ -310,7 +350,8 @@ function generateClassContent(
     typeDef: any,
     attributes: any[],
     enumMap: Map<string, string[]>,
-    baseImport = 'rallyorm'
+    baseImport = 'rallyorm',
+    openEnums = false
 ): string {
     const entityType = (typeDef.TypePath ?? typeDef.ElementName).toLowerCase();
 
@@ -373,7 +414,7 @@ function generateClassContent(
         if (attr.Sortable === false) parts.push('sortable: false');
 
         fieldsStr += `\n        ${attrName}: { ${parts.join(', ')} },`;
-        fieldDeclarationsStr += `\n    declare ${formatPropertyName(attrName)}?: ${mapAttributeTypeToTsType(attrType, enumValues)};`;
+        fieldDeclarationsStr += `\n    declare ${formatPropertyName(attrName)}?: ${mapAttributeTypeToTsType(attr, enumValues, openEnums)};`;
     }
 
     return `import { RallyEntity } from '${baseImport}';

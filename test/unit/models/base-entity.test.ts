@@ -2,6 +2,7 @@ import { expect } from 'chai';
 import { RallyEntity } from '../../../src/models/base-entity.js';
 import { HierarchicalRequirement } from '../../../src/models/core/hierarchical-requirement.js';
 import { Project } from '../../../src/models/core/project.js';
+import { Defect } from '../../../src/models/core/defect.js';
 
 describe('RallyEntity', function () {
     this.timeout(5000);
@@ -291,6 +292,37 @@ describe('RallyEntity', function () {
     });
 
     describe('Field Validation', () => {
+        it('should check writable fields only, not the read-only ones Rally fills in', () => {
+            class ReadOnlyModel extends RallyEntity {
+                static fields = {
+                    Name: { type: 'string', required: true },
+                    FormattedIDPrefix: { type: 'string', required: true, readOnly: true },
+                    CommonKey: { type: 'string', readOnly: true, maxLength: 32 }
+                };
+            }
+
+            // Exactly what Rally returns: hidden read-only fields absent, CommonKey over its declared length.
+            const entity = new ReadOnlyModel({ Name: 'Story', CommonKey: 'x'.repeat(40) });
+            expect(entity.validate()).to.equal(true);
+
+            const missingName = new ReadOnlyModel({ CommonKey: 'k' });
+            expect(missingName.validate()).to.equal(false);
+            expect(missingName.getErrors()).to.deep.equal(['Name is required']);
+        });
+
+        it('should accept entities exactly as Rally returns their ratings and dropdowns', () => {
+            // Unset ratings read back as "None"; unset string dropdowns as null; "" clears them on write.
+            const defect = new Defect({
+                Name: 'Defect', ScheduleState: 'Defined', State: 'Submitted',
+                Severity: 'None', Priority: 'None', Resolution: 'None', Environment: '', Package: null
+            });
+            expect(defect.validate(), defect.getErrors().join('; ')).to.equal(true);
+
+            defect.Severity = 'Not a real severity';
+            expect(defect.validate()).to.equal(false);
+            expect(defect.getErrors()[0]).to.match(/^Severity must be one of: /);
+        });
+
         it('should allow null for a nullable required field', () => {
             class NullableModel extends RallyEntity {
                 static fields = { Notes: { type: 'string', required: true, nullable: true } };

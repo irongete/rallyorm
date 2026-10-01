@@ -13,17 +13,26 @@ RallyORM is a TypeScript library for working with the Rally (Broadcom Rally / CA
 
 It gives you a higher-level API over Rally entities such as `UserStory`, `Defect`, `Task`, `Project`, `Iteration`, `Release`, `TestCase`, and more, plus a generator that turns your own workspace's type definitions (custom fields included) into typed models.
 
-The package is ESM-only and targets Node.js applications.
+The package is published as ES modules and targets Node.js applications.
 
 ## Installation
 
 Requirements:
 
 - Node.js 18 or newer
+- TypeScript 5.0 or newer, if you use TypeScript
 
 ```bash
 npm install rallyorm
 ```
+
+### ES modules and CommonJS projects
+
+RallyORM is an ES module. How you load it depends on your project:
+
+- **ES module projects** (`"type": "module"` in `package.json`) use `import { RallyDataSource } from 'rallyorm'` on any supported Node.js version.
+- **CommonJS projects** (no `"type": "module"`) also work when run through `tsx`, or on Node.js 20.19+ / 22.12+, which can `require()` ES modules. On older Node.js versions a plain `require('rallyorm')` fails with `ERR_REQUIRE_ESM`: add `"type": "module"` to your `package.json`, or load it with `await import('rallyorm')`.
+- **TypeScript**: use `"module": "nodenext"` (TypeScript 5.8 or newer). With `"module": "node16"`, TypeScript rejects importing an ES module from a CommonJS file (`TS1479`).
 
 ## What It Includes
 
@@ -83,6 +92,10 @@ const defects = await ds.defects.find({
 const defect = await ds.defects.findOne('123456');
 ```
 
+`find` and `findBy` read one page (`pagesize`, default 200; Rally serves at most 2000 per page). With `maxResults` they page through the results until they have that many, so `maxResults: 4000` returns up to 4000 records. `findAllBy` returns every match.
+
+If Rally rejects a query (for example a malformed raw `query` string), the call throws a `RallyOperationError` whose `rallyErrors` carry Rally's message. It does not return an empty list.
+
 You can also work directly with model classes when that is clearer for the calling code:
 
 ```typescript
@@ -141,7 +154,8 @@ console.log(stories[0].Owner.DisplayName);
 ```
 
 - A plain name (`'Name'`) is fetched as a scalar field. If it is a relationship (`'Tasks'`), the related records are eager-loaded with their default fields.
-- A dot path (`'Owner.DisplayName'`) fetches `Owner` and eager-loads it with `DisplayName`. Paths can go as deep as `relationshipLoaderOptions.maxDepth` allows (`'Iteration.Project.Name'`).
+- A dot path (`'Owner.DisplayName'`) fetches `Owner` with `DisplayName`. Paths can go as deep as `relationshipLoaderOptions.maxDepth` allows (`'Iteration.Project.Name'`).
+- Rally fills single related objects (`Owner`, `Project`, `Iteration`, …) in the same request as their parent, at any depth, so `'Owner.DisplayName'` and `'Iteration.Project.Name'` cost no extra requests. Collections (`'Tasks.Name'`) and wildcards (`'Owner.*'`) are loaded with batched extra requests.
 - `'*'` fetches every field of the top-level entity (`fetch=true`) and disables eager-loading for that query.
 
 Polymorphic collections such as `TestSet.WorkProducts` mix several entity types. Add a type filter in square brackets to restrict nested loading to one of them:
@@ -156,19 +170,23 @@ The whole `WorkProducts` collection is still loaded; `TestCases` are only loaded
 
 When a relationship is eager-loaded, RallyORM exposes it as the corresponding typed model when the model exists in the registry.
 
-With models that declare typed properties (the ones emitted by `npx rallyorm generate`, see below), pass the list `as const` and the selected top-level fields become required in the result type while everything else keeps its optional declaration:
+The models declare every standard field with the type Rally returns. The selected top-level fields become required in the result type, and everything else keeps its optional declaration:
 
 ```typescript
 const [story] = await ds.userStories.find({
-  select: ['FormattedID', 'Name'] as const,
+  select: ['FormattedID', 'Name', 'PlanEstimate'],
   maxResults: 1
 });
 
-story.Name;        // string — selected
-story.Description; // string | undefined — not selected
+story.Name;          // string — selected
+story.PlanEstimate;  // number | null — selected; Rally returns null when it is unset
+story.Description;   // string | undefined — not selected
+story.ScheduleState; // 'Defined' | 'In-Progress' | … | (string & {}) — suggests Rally's values, accepts your workspace's own
+story.Owner;         // any — relations are a loaded model or a LazyLink depending on select
+story.c_MyField;     // any — custom fields are not declared on the built-in models
 ```
 
-The built-in models type every field as `any`, so this narrowing only kicks in once you use generated models.
+This narrowing needs the select list written inline (or `as const`). A list held in a `string[]` variable narrows nothing. The typed declarations need TypeScript 5.0 or newer.
 
 ### Lazy Relationships
 
@@ -183,7 +201,7 @@ const project = await projectLink?.load();              // one GET, returns the 
 console.log(project?.Name);
 ```
 
-This is useful when you want a lightweight first read and only dereference some related entities later. When you already know which relationships you need, `select: ['Project.Name']` is cheaper: it batches the loads instead of issuing one request per `load()`.
+This is useful when you want a lightweight first read and only dereference some related entities later. When you already know which relationships you need, `select: ['Project.Name']` is cheaper: the project names come back with the stories instead of costing one request per `load()`.
 
 ### Write Data
 
@@ -219,7 +237,7 @@ For production usage, keep writes disabled unless the process really needs them.
 
 String-based tag writes are strict. If RallyORM cannot resolve or create every requested tag, the write fails instead of silently dropping tags from the payload.
 
-Validation is opt-in: `entity.validate()` checks required fields, types, lengths, ranges and allowed values against the model metadata and `entity.getErrors()` lists what failed. Nothing is validated implicitly on `save`, so workspaces with customised dropdown values keep working with the built-in models.
+Validation is opt-in: `entity.validate()` checks the writable fields (required, types, lengths, ranges and allowed values) against the model metadata, and `entity.getErrors()` lists what failed. Read-only fields are skipped because Rally fills them in. An entity read from Rally validates as-is: an empty dropdown (`""`, `null`, or `"None"` for ratings) is accepted. Nothing is validated implicitly on `save`, so workspaces with customised dropdown values keep working with the built-in models. To validate against your own dropdown values, generate your models (see below).
 
 ### Relationship Loading Limits
 
@@ -303,6 +321,10 @@ Options:
 - `--base-url=<url>` — WSAPI base URL for non-US tenants
 - `--include=Defect,HierarchicalRequirement,...` — generate only these types
 - `--base-import=<specifier>` — import specifier for the RallyORM base classes, default `rallyorm`
+- `--open-enums` — type dropdown fields as their allowed values plus any other string (`'High' | 'Low' | (string & {})`) instead of only the allowed values. Use it when values may be added after you generate
+- `--exclude-custom-fields` — leave out the workspace's custom fields (`c_*`), for models shared across workspaces
+
+Every field is declared with the type Rally returns. Optional fields Rally returns as `null` when unset (numbers, dates, short strings, dropdowns) are typed `| null`. Booleans and long text fields never are. Dropdown types include `""`, and ratings also `"None"`, which is how Rally reports an empty rating.
 
 Generated files use `.js` relative import specifiers so they work directly with Node.js ESM after compilation. The output includes an `index.ts` that exports every model, a `GENERATED_MODELS` array, and a `GeneratedRallyDataSource` with typed getters bound to the generated classes.
 

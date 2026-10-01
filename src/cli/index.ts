@@ -22,6 +22,8 @@ async function main() {
         console.log('  --base-url=<url>       WSAPI base URL (default: https://rally1.rallydev.com/slm/webservice/v2.0)');
         console.log('  --include=<A,B,...>    Only generate these type names (e.g. Defect,HierarchicalRequirement)');
         console.log('  --base-import=<spec>   Import specifier for the RallyORM base classes (default: rallyorm)');
+        console.log('  --open-enums           Type constrained fields as their allowed values plus any other string');
+        console.log('  --exclude-custom-fields  Leave out the workspace custom attributes (c_*)');
         process.exit(1);
     }
 
@@ -34,6 +36,8 @@ async function main() {
     const baseImport = args.find(arg => arg.startsWith('--base-import='))?.split('=').slice(1).join('=');
     const includeArg = args.find(arg => arg.startsWith('--include='))?.split('=').slice(1).join('=');
     const include = includeArg ? includeArg.split(',').map(s => s.trim()).filter(Boolean) : undefined;
+    const openEnums = args.includes('--open-enums');
+    const excludeCustomFields = args.includes('--exclude-custom-fields');
 
     if (!apiKey) {
         apiKey = await question('What is your Rally API Key (e.g. _abcd1234...)? ');
@@ -51,7 +55,7 @@ async function main() {
     }
 
     try {
-        await generateModels({ apiKey, workspaceId, outputDir, baseUrl, baseImport, include });
+        await generateModels({ apiKey, workspaceId, outputDir, baseUrl, baseImport, include, openEnums, excludeCustomFields });
         console.log(`\nSuccessfully generated RallyORM models in ${outputDir}`);
     } catch (err) {
         console.error('\nError generating models:');

@@ -133,6 +133,8 @@ interface IRallyRawResponse {
     QueryResult?: {
         Results?: unknown[];
         TotalResultCount?: number;
+        Errors?: unknown[];
+        Warnings?: unknown[];
         [key: string]: unknown;
     };
     CreateResult?: IRallyRawResponse;
@@ -608,11 +610,30 @@ export class RallyClient {
                     return {} as IRallyRawResponse;
                 }
 
+                let parsed: IRallyRawResponse;
                 try {
-                    return JSON.parse(responseText) as IRallyRawResponse;
+                    parsed = JSON.parse(responseText) as IRallyRawResponse;
                 } catch (error: any) {
                     throw new RallyNetworkError(`Retryable: Invalid JSON response - ${error.message}`);
                 }
+
+                // Rally answers a query it cannot parse with HTTP 200, zero results and the
+                // reason in QueryResult.Errors. Returning that as an empty page would make a
+                // malformed query indistinguishable from one that matches nothing.
+                const queryErrors = parsed?.QueryResult?.Errors;
+                if (Array.isArray(queryErrors) && queryErrors.length > 0) {
+                    const errors = queryErrors.map(String);
+                    const warnings = (parsed.QueryResult?.Warnings ?? []).map(String);
+                    const query = requestUrl.searchParams.get('query');
+                    this.logger.error(`Rally rejected the query: ${this._formatUrlForLog(requestUrl)}`);
+                    throw new AbortError(new RallyOperationError(
+                        `Rally rejected the query${query ? ` ${query}` : ''}: ${errors.join('; ')}`,
+                        errors,
+                        warnings
+                    ));
+                }
+
+                return parsed;
 
             } catch (error: any) {
                 clearTimeout(timeoutId);

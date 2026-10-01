@@ -4,6 +4,23 @@ import { RallyEntity } from '../base-entity.js';
  * Generated model for Attachment
  */
 export class Attachment extends RallyEntity {
+
+    declare ObjectUUID?: string;
+    declare Compressed?: boolean;
+    declare Description?: string;
+    declare Size?: number | null;
+    declare ContentType?: string;
+    declare Name?: string;
+    declare VersionId?: string | null;
+    declare CreationDate?: string | Date;
+    declare ObjectID?: number;
+    declare TestCaseResult?: any;
+    declare Artifact?: any;
+    declare Workspace?: any;
+    declare Subscription?: any;
+    declare User?: any;
+    declare Content?: any;
+
     static override readonly entityType = 'attachment';
 
     static override readonly fields = {

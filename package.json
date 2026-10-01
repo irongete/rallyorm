@@ -11,11 +11,13 @@
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
     },
     "./utils": {
       "types": "./dist/src/utils/index.d.ts",
-      "import": "./dist/src/utils/index.js"
+      "import": "./dist/src/utils/index.js",
+      "default": "./dist/src/utils/index.js"
     }
   },
   "files": [
@@ -34,7 +36,7 @@
     "coverage": "c8 npm run test",
     "coverage:badges": "npm run coverage && mocha \".test-dist/test/unit/**/*.js\" --reporter json --reporter-option output=coverage/mocha.json && node scripts/coverage-badges.mjs",
     "lint": "eslint . --max-warnings=0",
-    "release:check": "npm run lint && npm run test && npm run build && node test/smoke/package-consumer.mjs && npm pack --dry-run",
+    "release:check": "npm run lint && npm run test && npm run build && node test/smoke/package-consumer.mjs && node test/smoke/package-consumer.cjs && npm pack --dry-run",
     "release:check:live": "cross-env RALLY_INTEGRATION=1 npm run release:check && cross-env RALLY_INTEGRATION=1 npm run test:live",
     "release:check:publish": "node scripts/require-live-release-env.mjs && npm run release:check:live",
     "prepublishOnly": "npm run release:check:publish"
